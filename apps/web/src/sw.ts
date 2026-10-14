@@ -62,11 +62,35 @@ async function markOpened(bookId: string, urls: string[]) {
   }
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_THUMBS = 500;
+
+/** Only this book's photos on this origin, so a message can't make the worker fetch anything else. */
+function bookPhotoUrls(bookId: string, urls: unknown): string[] {
+  if (!Array.isArray(urls)) return [];
+  const prefix = `/api/media/books/${bookId}/`;
+  const out: string[] = [];
+  for (const u of urls.slice(0, MAX_THUMBS)) {
+    if (typeof u !== 'string') continue;
+    try {
+      const url = new URL(u, self.location.origin);
+      if (url.origin === self.location.origin && url.pathname.startsWith(prefix)) out.push(url.href);
+    } catch {
+      // not a URL
+    }
+  }
+  return out;
+}
+
 self.addEventListener('message', (e) => {
-  const d = e.data as { type?: string; bookId?: string; urls?: string[] } | undefined;
-  if (d?.type === 'opened-book' && d.bookId) e.waitUntil(markOpened(d.bookId, d.urls ?? []));
+  // Only the app's own pages talk to the worker.
+  if (e.origin !== self.location.origin) return;
+  const d = e.data as { type?: string; bookId?: unknown; urls?: unknown } | undefined;
+  if (d?.type === 'opened-book' && typeof d.bookId === 'string' && UUID.test(d.bookId)) {
+    e.waitUntil(markOpened(d.bookId, bookPhotoUrls(d.bookId, d.urls)));
+  }
   if (d?.type === 'signed-out') {
-    e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith('memento-') && k !== SHARED_CACHE).map((k) => caches.delete(k)))));
+    e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith('memento-')).map((k) => caches.delete(k)))));
   }
 });
 
