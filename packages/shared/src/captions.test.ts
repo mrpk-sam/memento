@@ -67,4 +67,27 @@ describe('cleanCaption', () => {
     const s = 'x'.repeat(70);
     expect(cleanCaption(s, 60)).toBe(s);
   });
+
+  it('matches the old regex version on random replies', () => {
+    const old = (raw: string, maxLen: number) => {
+      let out = raw.trim().split('\n')[0]!.trim().replace(/^["'“”‘’]+|["'“”‘’]+$/g, '').trim();
+      if (out.length > maxLen + 15) out = out.slice(0, maxLen + 12).replace(/\s+\S*$/, '') + '…';
+      return out;
+    };
+    const chars = ['a', 'b', ' ', ' ', '"', '“', '’', '\n', '\t'];
+    let seed = 7;
+    const rand = (n: number) => ((seed = (seed * 1103515245 + 12345) % 2 ** 31), seed % n);
+    for (let i = 0; i < 2000; i++) {
+      const s = Array.from({ length: rand(60) }, () => chars[rand(chars.length)]).join('');
+      const max = 5 + rand(30);
+      expect(cleanCaption(s, max)).toBe(old(s, max));
+    }
+  });
+
+  it('stays fast on hostile replies', () => {
+    const t0 = performance.now();
+    cleanCaption('a' + '"'.repeat(50_000) + 'b', 60);
+    cleanCaption('a' + ' '.repeat(50_000) + 'b'.repeat(100), 60);
+    expect(performance.now() - t0).toBeLessThan(100);
+  });
 });
