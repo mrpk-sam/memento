@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:24-slim AS base
+FROM node:26-slim AS base
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH
 RUN corepack enable
 WORKDIR /repo
@@ -15,7 +15,7 @@ RUN pnpm --filter @memento/web build && pnpm --filter @memento/api build
 # Production node_modules for the API only (shared is bundled into dist).
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm --filter @memento/api deploy --prod --legacy /out
 
-FROM node:24-slim AS runtime
+FROM node:26-slim AS runtime
 ENV NODE_ENV=production PORT=3000
 WORKDIR /app
 COPY --from=build /out/node_modules ./node_modules
