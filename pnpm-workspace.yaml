@@ -5,3 +5,8 @@ allowBuilds:
   esbuild: true
   sharp: true
   '@node-rs/argon2': true
+# Patched versions of build-tool dependencies that their parents haven't picked up yet.
+overrides:
+  source-map-js: ^1.2.2
+  serialize-javascript: ^7.1.2
+  esbuild@<0.28.1: ^0.28.1
