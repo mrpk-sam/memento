@@ -1,0 +1,16 @@
+.header { height: 68px; display: flex; align-items: center; border-bottom: 1px solid var(--line); background: var(--bg); position: sticky; top: 0; z-index: 40; transition: background .45s, border-color .45s; }
+.brand { display: flex; align-items: center; gap: 10px; background: none; border: 0; cursor: pointer; color: inherit; padding: 0; }
+.mark { display: flex; gap: 2px; align-items: flex-end; height: 24px; }
+.mark > span { width: 6px; border-radius: 1.5px; }
+.word { font: italic 500 25px/1 var(--font-serif); letter-spacing: -.01em; }
+.nav { gap: 4px; }
+.pill { height: 36px; padding: 0 14px; border-radius: 999px; border: 0; cursor: pointer; font: 500 14px/1 var(--font-ui); white-space: nowrap; transition: background .2s, color .2s; }
+.pill:hover { background: var(--surface2) !important; }
+.dark { position: relative; width: 60px; height: 32px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface2); cursor: pointer; padding: 0; transition: background .45s; flex: none; }
+.knob { position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,.2); display: flex; align-items: center; justify-content: center; color: var(--accent); transition: transform .4s var(--spring), background .45s; }
+.avWrap { position: relative; flex: none; }
+.avatar { width: 36px; height: 36px; border-radius: 50%; border: 0; color: #fff; display: flex; align-items: center; justify-content: center; font: 600 13px/1 var(--font-ui); cursor: pointer; padding: 0; }
+.menu { position: absolute; right: 0; top: 46px; min-width: 200px; padding: 6px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 20px 40px -18px var(--shadow); animation: kpop .25s var(--spring) both; z-index: 50; }
+.menuHead { padding: 10px 12px; font: 400 13px/1.3 var(--font-ui); color: var(--ink2); border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.menuItem { width: 100%; text-align: left; height: 36px; padding: 0 12px; border: 0; border-radius: 10px; background: none; font: 500 14px/1 var(--font-ui); cursor: pointer; }
+.menuItem:hover { background: var(--surface2); }

@@ -1,0 +1,11 @@
+.toggle { display: flex; align-items: center; gap: 10px; border: 0; background: none; color: var(--ink); font: 500 14px/1 var(--font-ui); cursor: pointer; padding: 0; white-space: nowrap; text-align: left; }
+.bare { border: 0; background: none; padding: 0; cursor: pointer; display: flex; }
+.track { position: relative; width: 36px; height: 18px; border-radius: 999px; flex: none; transition: background .2s; }
+.knob { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform .3s var(--spring); }
+.trackBig { position: relative; width: 44px; height: 24px; border-radius: 999px; flex: none; transition: background .2s; }
+.knobBig { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .3s var(--spring); }
+.seg { display: flex; padding: 3px; border-radius: 999px; background: var(--surface2); align-self: flex-start; }
+.segWrap { display: flex; flex-wrap: wrap; gap: 4px; padding: 3px; border-radius: 14px; background: var(--surface2); align-self: flex-start; }
+.segBtn { height: 30px; padding: 0 14px; border-radius: 999px; border: 0; background: transparent; color: var(--ink2); font: 500 13px/1 var(--font-ui); cursor: pointer; white-space: nowrap; transition: background .2s; }
+.segBtnSm { height: 28px; padding: 0 12px; border-radius: 999px; border: 0; background: transparent; color: var(--ink2); font: 500 12px/1 var(--font-ui); cursor: pointer; white-space: nowrap; transition: background .2s; }
+.segBtnLg { height: 32px; padding: 0 16px; border-radius: 999px; border: 0; background: transparent; color: var(--ink2); font: 500 13px/1 var(--font-ui); cursor: pointer; white-space: nowrap; transition: background .2s; }

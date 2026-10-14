@@ -1,0 +1,13 @@
+# App only. Postgres and MinIO run on other servers.
+# Point your Pangolin resource at http://<this-host>:3000.
+services:
+  memento:
+    build: .
+    image: memento:latest
+    container_name: memento
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+    ports:
+      - "3000:3000"

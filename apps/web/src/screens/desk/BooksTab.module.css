@@ -1,0 +1,35 @@
+.list { margin-top: 24px; display: flex; flex-direction: column; gap: 14px; }
+.row { display: grid; grid-template-columns: 40px minmax(0,1fr); gap: 22px; padding: 20px 22px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
+.order { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.arrow { width: 34px; height: 28px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.preview { border-radius: 3px; box-shadow: 3px 3px 8px -3px rgba(0,0,0,.4); transition: background .3s; }
+.posLabel { font: 600 11px/1 var(--font-ui); color: var(--ink2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px 28px; align-items: start; }
+.col { display: flex; flex-direction: column; gap: 10px; }
+.colHead { font: 600 12px/1 var(--font-ui); color: var(--ink2); letter-spacing: .06em; text-transform: uppercase; }
+.title { font: 400 21px/1.2 var(--font-serif); }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.input { height: 36px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--ink); padding: 0 10px; font: 500 14px/1 var(--font-ui); width: 100%; }
+.spineInput { width: 100%; height: 34px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--ink); padding: 0 10px; font: 500 13px/1 var(--font-ui); }
+.hint { font: 400 13px/1.4 var(--font-ui); color: var(--ink2); text-wrap: pretty; }
+.hhGrid { margin-top: 12px; display: grid; grid-template-columns: minmax(0,1.4fr) minmax(0,1fr); gap: 8px; }
+.addChild { margin-top: 10px; height: 30px; padding: 0 12px; border-radius: 999px; border: 1px dashed var(--tan); background: none; color: var(--ink2); font: 500 12px/1 var(--font-ui); cursor: pointer; }
+.addChild:hover { color: var(--accent); border-color: var(--accent); }
+.actions { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+.open { height: 32px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: none; color: var(--ink); font: 500 13px/1 var(--font-ui); cursor: pointer; }
+.open:hover { background: var(--surface2); }
+.editPages { height: 32px; padding: 0 14px; border-radius: 999px; border: 0; background: var(--ink); color: var(--bg); font: 500 13px/1 var(--font-ui); cursor: pointer; }
+.del { height: 32px; padding: 0 12px; border-radius: 999px; border: 0; background: none; color: var(--ink2); font: 500 13px/1 var(--font-ui); cursor: pointer; }
+.del:hover { background: #F8E4E1; color: #C0443A; }
+.confirm { margin-top: 10px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 12px; border-radius: 10px; background: #F8E4E1; color: #A2362D; font: 500 13px/1.3 var(--font-ui); animation: kpop .25s ease both; }
+.keep { height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(162,54,45,.3); background: #fff; color: #A2362D; font: 500 13px/1 var(--font-ui); cursor: pointer; }
+.confirmDel { height: 30px; padding: 0 12px; border-radius: 999px; border: 0; background: #C0443A; color: #fff; font: 600 13px/1 var(--font-ui); cursor: pointer; }
+.match { align-self: flex-start; height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: none; color: var(--ink); font: 500 12px/1 var(--font-ui); cursor: pointer; }
+.match:hover { background: var(--surface2); }
+.lockRow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.pin { width: 74px; height: 32px; border-radius: 8px; border: 1px solid var(--line); background: var(--field); color: var(--ink); text-align: center; font: 600 15px/1 var(--font-ui); letter-spacing: .3em; }
+.pinNew { height: 36px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--ink); padding: 0 10px; font: 500 14px/1 var(--font-ui); width: 74px; letter-spacing: .3em; text-align: center; }
+.newForm { margin-top: 24px; display: grid; grid-template-columns: 40px minmax(0,1fr); gap: 22px; padding: 22px; border-radius: 16px; background: var(--surface); border: 1.5px solid var(--accent); animation: kpop .25s ease both; }
+.newSpine { width: 34px; height: 124px; border-radius: 3px; box-shadow: 3px 3px 8px -3px rgba(0,0,0,.4); transition: background .3s; }
+.newBody { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.pin::placeholder, .pinNew::placeholder { letter-spacing: normal; }

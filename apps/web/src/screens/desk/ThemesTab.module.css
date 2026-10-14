@@ -1,0 +1,25 @@
+.grid { margin-top: 24px; display: grid; grid-template-columns: repeat(auto-fill, 216px); gap: 24px; }
+.item { display: flex; flex-direction: column; gap: 10px; width: 216px; }
+.preview { position: relative; width: 216px; height: 270px; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 14px 24px -16px rgba(40,25,10,.5); transition: transform .3s var(--spring); }
+.preview:hover { transform: translateY(-4px) rotate(-.6deg); }
+.del { position: absolute; top: 8px; right: 8px; z-index: 5; width: 26px; height: 26px; border-radius: 50%; border: 0; background: rgba(255,255,255,.9); color: #6B6157; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity .2s; }
+.preview:hover .del, .del:focus { opacity: 1; }
+.del:hover { color: #C0443A; }
+.nameRow { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.name { font: 500 15px/1.2 var(--font-ui); }
+.used { font: 400 12px/1 var(--font-ui); color: var(--ink2); white-space: nowrap; }
+.motif { font: 400 12px/1 var(--font-ui); color: var(--ink2); text-transform: capitalize; margin-top: -4px; }
+.builder { margin-top: 44px; padding: 28px; border-radius: 20px; background: var(--surface); border: 1px solid var(--line); display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 32px; align-items: start; }
+.form { display: flex; flex-direction: column; gap: 20px; }
+.kicker { font: 600 11px/1 var(--font-ui); letter-spacing: .24em; text-transform: uppercase; color: var(--accent); }
+.title { margin-top: 8px; font: 400 26px/1.15 var(--font-serif); }
+.label { display: flex; flex-direction: column; gap: 8px; font: 600 13px/1 var(--font-ui); }
+.input { height: 42px; border-radius: 10px; border: 1px solid var(--line); background: var(--field); color: var(--ink); padding: 0 12px; font: 400 15px/1 var(--font-ui); }
+.row { display: flex; flex-direction: column; gap: 10px; }
+.swatches { display: flex; gap: 10px; flex-wrap: wrap; }
+.swatch { width: 30px; height: 30px; border-radius: 50%; border: 0; cursor: pointer; transition: transform .2s cubic-bezier(.3,1.5,.5,1); }
+.swatch:hover { transform: scale(1.12); }
+.save { align-self: flex-start; height: 44px; padding: 0 22px; border-radius: 999px; border: 0; background: var(--accent); color: var(--accent-ink); font: 600 15px/1 var(--font-ui); cursor: pointer; transition: transform .2s var(--spring); }
+.save:hover { transform: translateY(-2px); }
+.live { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.livePage { position: relative; width: 330px; height: 412px; flex: none; border-radius: 6px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,.08), 0 30px 50px -30px rgba(40,25,10,.6); transform: rotate(1deg); max-width: 100%; }

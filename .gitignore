@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+coverage/
+# original handoff drop; the tracked copy is docs/design-handoff
+/Memento/
+*.local.ts
+context_summary.md

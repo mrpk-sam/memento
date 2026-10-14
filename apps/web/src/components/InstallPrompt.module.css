@@ -1,0 +1,9 @@
+.card { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 35; width: min(460px, calc(100vw - 32px)); display: flex; align-items: center; gap: 14px; padding: 12px 12px 12px 14px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 20px 40px -18px var(--shadow); animation: kpop .35s var(--spring) both; }
+.icon { width: 44px; height: 44px; border-radius: 11px; flex: none; box-shadow: inset 0 0 0 1px var(--line); }
+.text { flex: 1; min-width: 0; }
+.title { font: 500 14px/1.25 var(--font-ui); }
+.sub { margin-top: 3px; font: 400 13px/1.35 var(--font-ui); color: var(--ink2); }
+.install { height: 36px; padding: 0 16px; border-radius: 999px; border: 0; background: var(--ink); color: var(--bg); font: 500 13px/1 var(--font-ui); cursor: pointer; flex: none; }
+.close { width: 32px; height: 32px; border-radius: 50%; border: 0; background: transparent; color: var(--ink2); display: flex; align-items: center; justify-content: center; cursor: pointer; flex: none; }
+.close:hover { background: var(--surface2); }
+@media (max-width: 600px) { .card { bottom: 84px; } }

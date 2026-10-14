@@ -1,0 +1,22 @@
+{
+  "name": "memento",
+  "private": true,
+  "license": "MIT",
+  "packageManager": "pnpm@11.23.0",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "dev": "pnpm -r --parallel --filter @memento/api --filter @memento/web dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "db:generate": "pnpm --filter @memento/api db:generate",
+    "db:migrate": "pnpm --filter @memento/api db:migrate",
+    "db:seed": "pnpm --filter @memento/api db:seed",
+    "check:storage": "pnpm --filter @memento/api check:storage"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0",
+    "@types/node": "^24.0.0"
+  }
+}

@@ -1,0 +1,15 @@
+.card { margin-top: 24px; max-width: 640px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); }
+.row { padding: 20px 24px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+.title { font: 500 15px/1.2 var(--font-ui); }
+.sub { font: 400 13px/1.4 var(--font-ui); color: var(--ink2); margin-top: 3px; }
+.family { width: 200px; height: 40px; border-radius: 10px; border: 1px solid var(--line); background: var(--field); color: var(--ink); padding: 0 12px; font: 400 15px/1 var(--font-ui); }
+.landingHead { margin-top: 28px; max-width: 640px; display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.h3 { font: 400 24px/1.2 var(--font-serif); }
+.reset { height: 32px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: none; color: var(--ink); font: 500 13px/1 var(--font-ui); cursor: pointer; }
+.reset:hover { background: var(--surface2); }
+.view { height: 32px; padding: 0 14px; border-radius: 999px; border: 0; background: var(--ink); color: var(--bg); font: 500 13px/1 var(--font-ui); cursor: pointer; }
+.fields { margin-top: 14px; max-width: 640px; padding: 20px 24px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 16px; }
+.field { display: flex; flex-direction: column; gap: 7px; }
+.field > span { font: 500 13px/1 var(--font-ui); }
+.field input { height: 40px; width: 100%; border-radius: 10px; border: 1px solid var(--line); background: var(--field); color: var(--ink); padding: 0 12px; font: 400 15px/1 var(--font-ui); }
+.field textarea { resize: vertical; width: 100%; border-radius: 10px; border: 1px solid var(--line); background: var(--field); color: var(--ink); padding: 10px 12px; font: 400 15px/1.45 var(--font-ui); }

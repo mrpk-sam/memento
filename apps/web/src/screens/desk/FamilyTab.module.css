@@ -1,0 +1,49 @@
+.invite { margin-top: 24px; padding: 20px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; align-items: end; animation: kpop .3s var(--spring) both; }
+.invite :global(button[aria-pressed]) { height: 36px; }
+.groups { margin-top: 24px; display: flex; flex-direction: column; gap: 18px; }
+.group { border-radius: 16px; background: var(--surface); border: 1px solid var(--line); overflow: hidden; }
+.groupHead { display: flex; align-items: center; gap: 14px; padding: 14px 20px; background: var(--surface2); border-bottom: 1px solid var(--line); }
+.groupSpine { width: 12px; height: 36px; flex: none; border-radius: 2px; box-shadow: 2px 2px 4px -2px rgba(0,0,0,.4); }
+.groupGuest { width: 30px; height: 30px; flex: none; border-radius: 50%; border: 1.5px dashed var(--tan); display: flex; align-items: center; justify-content: center; color: var(--ink2); }
+.groupName { font: 400 18px/1.2 var(--font-serif); }
+.groupSub { margin-top: 3px; font: 400 13px/1.35 var(--font-ui); color: var(--ink2); }
+.groupCount { font: 500 12px/1 var(--font-ui); color: var(--ink2); white-space: nowrap; }
+.quickBtn { width: 32px; height: 32px; flex: none; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--ink); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.quickBtn:hover { border-color: var(--accent); color: var(--accent); }
+.quick { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--accent) 5%, var(--surface)); animation: kpop .25s ease both; }
+.quick :global(button[aria-pressed]) { height: 36px; }
+.qInput { height: 36px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--ink); padding: 0 10px; font: 400 14px/1 var(--font-ui); min-width: 0; }
+.qAdd { flex: 1; height: 36px; padding: 0 14px; border-radius: 999px; border: 0; background: var(--ink); color: var(--bg); font: 600 13px/1 var(--font-ui); cursor: pointer; white-space: nowrap; }
+.qCancel { width: 36px; height: 36px; flex: none; border-radius: 50%; border: 1px solid var(--line); background: none; color: var(--ink); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.empty { padding: 18px 20px; font: 400 14px/1.4 var(--font-ui); color: var(--ink2); }
+.row { display: grid; align-items: center; border-bottom: 1px solid var(--line); }
+.avatar { grid-area: av; width: 40px; height: 40px; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font: 600 15px/1 var(--font-serif); }
+.name { font: 500 15px/1.2 var(--font-ui); }
+.role { font: 400 13px/1.3 var(--font-ui); color: var(--ink2); margin-top: 2px; }
+.pendingRow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 8px; }
+.pendingChip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 999px; font: 600 12px/1 var(--font-ui); }
+.linkBtn { height: 28px; padding: 0 10px; border-radius: 999px; border: 0; background: none; color: var(--ink); font: 600 12px/1 var(--font-ui); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.linkBtn:hover { background: var(--surface2); }
+.linkDanger { color: var(--ink2); }
+.linkDanger:hover { background: #F8E4E1; color: #C0443A; }
+.dashedBtn { height: 28px; padding: 0 10px; border-radius: 999px; border: 1px dashed var(--tan); background: none; color: var(--ink2); font: 500 12px/1 var(--font-ui); cursor: pointer; }
+.dashedBtn:hover { color: var(--ink); }
+.editName { height: 30px; border-radius: 8px; border: 1px solid var(--accent); background: var(--field); color: var(--ink); padding: 0 8px; font: 500 14px/1 var(--font-ui); }
+.editRole { height: 28px; border-radius: 8px; border: 1px solid var(--line); background: var(--field); color: var(--ink); padding: 0 8px; font: 400 13px/1 var(--font-ui); }
+.email { grid-area: em; min-width: 0; width: 100%; height: 34px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--ink2); padding: 0 8px; margin-left: -9px; font: 400 14px/1 var(--font-ui); text-overflow: ellipsis; outline: none; cursor: text; transition: border-color .2s, background .2s; }
+.email:hover:not(:read-only):not(:disabled) { border-color: var(--line) !important; }
+.email:focus:not(:read-only) { border-color: var(--accent) !important; background: var(--field); color: var(--ink); }
+.email:disabled { cursor: default; color: var(--ink2); -webkit-text-fill-color: var(--ink2); opacity: 1; }
+.rowSelect { height: 34px; border-radius: 8px; border: 1px solid var(--line); background: var(--field); color: var(--ink); padding: 0 8px; font: 500 13px/1 var(--font-ui); min-width: 0; }
+.rowSelect:disabled { opacity: .7; }
+.actions { grid-area: act; display: flex; gap: 4px; justify-content: flex-end; }
+.confirmDel { height: 32px; padding: 0 10px; border-radius: 999px; border: 0; background: #C0443A; color: #fff; font: 600 12px/1 var(--font-ui); cursor: pointer; }
+.confirmX { height: 32px; width: 32px; border-radius: 50%; border: 1px solid var(--line); background: none; color: var(--ink); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.request { display: grid; grid-template-columns: 40px minmax(0,1fr) 150px 130px auto; gap: 14px; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--line); }
+.request:last-child { border-bottom: 0; }
+@media (max-width: 900px) { .request { grid-template-columns: 40px minmax(0,1fr); } .request > select, .request > .requestActions { grid-column: 2; } }
+.requestNote { margin-top: 6px; font: 500 17px/1.2 var(--font-script); color: var(--ink); }
+.requestActions { display: flex; gap: 6px; justify-content: flex-end; }
+.approve { height: 34px; padding: 0 16px; border-radius: 999px; border: 0; background: var(--accent); color: var(--accent-ink); font: 600 13px/1 var(--font-ui); cursor: pointer; }
+.decline { height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: none; color: var(--ink2); font: 500 13px/1 var(--font-ui); cursor: pointer; }
+.decline:hover { background: #F8E4E1; color: #C0443A; border-color: transparent; }

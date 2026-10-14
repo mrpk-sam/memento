@@ -1,0 +1,79 @@
+/* Design tokens from docs/design-handoff/README.md. Dark mode is data-theme="dark" on <html>. */
+:root {
+  --bg: #FAFAF8;
+  --surface: #FFFFFF;
+  --surface2: #F3EEE6;
+  --ink: #2B2621;
+  --ink2: #6B6157;
+  --line: #E6DDD0;
+  --tan: #D4C5B0;
+  --accent: #B0592F;
+  --accent-ink: #FFFFFF;
+  --wall: #F4EEE4;
+  --wood1: #C49A6C;
+  --wood2: #9A6E47;
+  --wood-top: #D8B38A;
+  --shadow: rgba(70, 45, 20, .22);
+  --glow: rgba(255, 214, 150, 0);
+  --page-dim: 0;
+  --field: #FFFFFF;
+  --stage: #EFE8DD;
+
+  --error: #C0443A;
+  --success: #5E8B5A;
+  --success2: #3E8E5E;
+  --warning: #D9A620;
+
+  --font-serif: 'Lora', Georgia, serif;
+  --font-ui: 'Outfit', system-ui, sans-serif;
+  --font-script: 'Caveat', cursive;
+  --font-mono: ui-monospace, Menlo, monospace;
+
+  --r-pill: 999px;
+  --r-card: 16px;
+  --r-input: 10px;
+  --r-drop: 20px;
+  --r-page: 6px;
+
+  --spring: cubic-bezier(.3, 1.4, .5, 1);
+}
+
+:root[data-theme='dark'] {
+  --bg: #171411;
+  --surface: #221E1A;
+  --surface2: #2B2621;
+  --ink: #EFE8DD;
+  --ink2: #B2A695;
+  --line: #3A332B;
+  --tan: #6B5D4B;
+  --accent: #E48B5F;
+  --accent-ink: #1A1410;
+  --wall: #1C1814;
+  --wood1: #6A4A30;
+  --wood2: #46301F;
+  --wood-top: #80603F;
+  --shadow: rgba(0, 0, 0, .55);
+  --glow: rgba(255, 190, 110, .14);
+  --page-dim: .12;
+  --field: #1B1815;
+  --stage: #12100E;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-ui); -webkit-font-smoothing: antialiased; }
+.app-root { min-height: 100dvh; background: var(--bg); color: var(--ink); transition: background .45s, color .45s; position: relative; overflow-x: hidden; }
+button, input, select, textarea { font: inherit; color: inherit; }
+
+a { color: var(--accent); }
+a:hover { color: #8A4322; }
+html, body { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { transition: background .45s; }
+
+/* Keyframes copied from the prototype. */
+@keyframes kfade { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes kpop { 0% { opacity: 0; transform: translateY(16px) scale(.96); } 100% { opacity: 1; transform: none; } }
+@keyframes kshake0 { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-10px); } 40% { transform: translateX(9px); } 60% { transform: translateX(-6px); } 80% { transform: translateX(4px); } }
+@keyframes kshake1 { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-10px); } 40% { transform: translateX(9px); } 60% { transform: translateX(-6px); } 80% { transform: translateX(4px); } }
+@keyframes kfadeout { from { opacity: 1; } to { opacity: 0; } }
+@keyframes kpulse { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
+@keyframes kspin { to { transform: rotate(360deg); } }
