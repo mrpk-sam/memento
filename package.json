@@ -2,6 +2,14 @@
   "name": "memento",
   "private": true,
   "license": "MIT",
+  "homepage": "https://github.com/mrpk-sam/memento#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mrpk-sam/memento.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mrpk-sam/memento/issues"
+  },
   "packageManager": "pnpm@11.23.0",
   "engines": {
     "node": ">=22"
