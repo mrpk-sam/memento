@@ -15,6 +15,7 @@ updates:
     schedule:
       interval: weekly
 
+  # Workflows pin each action to a commit (with its version in a comment); Dependabot moves both.
   - package-ecosystem: github-actions
     directory: /
     schedule:
