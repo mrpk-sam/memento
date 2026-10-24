@@ -24,8 +24,9 @@
   --success2: #3E8E5E;
   --warning: #D9A620;
 
-  --font-serif: 'Lora', Georgia, serif;
-  --font-ui: 'Outfit', system-ui, sans-serif;
+  /* Handwritten throughout. Display: titles and headings. UI: everything else. Script: captions and notes. */
+  --font-display: 'Kalam', 'Segoe Print', 'Bradley Hand', cursive;
+  --font-ui: 'Shantell Sans', system-ui, sans-serif;
   --font-script: 'Caveat', cursive;
   --font-mono: ui-monospace, Menlo, monospace;
 
@@ -61,6 +62,8 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-ui); -webkit-font-smoothing: antialiased; }
+/* Kalam has no italic. A slanted fake reads worse than upright handwriting, so it stays upright. */
+html { font-synthesis-style: none; }
 .app-root { min-height: 100dvh; background: var(--bg); color: var(--ink); transition: background .45s, color .45s; position: relative; overflow-x: hidden; }
 button, input, select, textarea { font: inherit; color: inherit; }
 

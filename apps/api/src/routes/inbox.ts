@@ -6,10 +6,11 @@ import { bookOwnerName, chapterList, fileToChapter, orderBooks } from '@memento/
 import * as s from '../db/schema.js';
 import { loadPages, mediaUrl } from '../lib/content.js';
 import { badRequest, notFound, parse } from '../lib/http.js';
-import { processImage, subjectFromName } from '../lib/images.js';
-import { inboxKey, photoKey } from '../lib/s3.js';
+import { subjectFromName } from '../lib/images.js';
+import { inboxKey, inboxVideoKey, photoKey, photoVideoKey } from '../lib/s3.js';
 import { requireAdmin } from '../lib/session.js';
 import { readUpload, uploadError, uploadKey } from '../lib/uploads.js';
+import { processMedia } from '../lib/videos.js';
 import { persistLayout } from './photos.js';
 
 type Item = typeof s.inboxItems.$inferSelect;
@@ -23,6 +24,8 @@ export async function inboxRoutes(app: FastifyInstance) {
     caption: it.caption,
     thumbUrl: mediaUrl(it.thumbKey),
     displayUrl: mediaUrl(it.displayKey),
+    videoUrl: mediaUrl(it.videoKey),
+    durationMs: it.durationMs,
     destBookId: it.destBookId,
     destPageId: it.destPageId,
     createdAt: it.createdAt.toISOString(),
@@ -50,7 +53,7 @@ export async function inboxRoutes(app: FastifyInstance) {
     return { items: items.map(dto), books: await destinations() };
   });
 
-  /** Processes uploads into the inbox. Each item defaults to the first book's latest chapter. */
+  /** Processes uploads (photos or videos) into the inbox. Each item defaults to the first book's latest chapter. */
   app.post('/api/inbox', async (req) => {
     const user = requireAdmin(req);
     const { uploads } = parse(z.object({ uploads: z.array(z.object({ id: z.string().uuid(), name: z.string().max(255).default('') })).min(1).max(20) }), req.body);
@@ -60,9 +63,14 @@ export async function inboxRoutes(app: FastifyInstance) {
     const skipped: { name: string; error: string }[] = [];
     for (const u of uploads) {
       try {
-        const img = await processImage(await readUpload(storage, user.id, u.id));
+        const img = await processMedia(await readUpload(storage, user.id, u.id));
         const id = randomUUID();
-        await Promise.all([storage.put(inboxKey(id, 'orig'), img.orig), storage.put(inboxKey(id, '1600'), img.display), storage.put(inboxKey(id, '400'), img.thumb)]);
+        await Promise.all([
+          storage.put(inboxKey(id, 'orig'), img.orig),
+          storage.put(inboxKey(id, '1600'), img.display),
+          storage.put(inboxKey(id, '400'), img.thumb),
+          img.video && storage.put(inboxVideoKey(id), img.video, 'video/mp4'),
+        ]);
         const [row] = await db
           .insert(s.inboxItems)
           .values({
@@ -73,6 +81,8 @@ export async function inboxRoutes(app: FastifyInstance) {
             thumbKey: inboxKey(id, '400'),
             width: img.width,
             height: img.height,
+            videoKey: img.video ? inboxVideoKey(id) : null,
+            durationMs: img.durationMs,
             subject: subjectFromName(u.name),
             destBookId: first?.id ?? null,
             destPageId: first?.chapters.at(-1)?.pageId ?? null,
@@ -115,9 +125,10 @@ export async function inboxRoutes(app: FastifyInstance) {
     const r = fileToChapter(pages, idx, { id: photoId, month: null });
     if (!r.placed.length) throw badRequest(`${ch.name} is full in that book. Pick another chapter.`);
 
-    await Promise.all(
-      (['orig', '1600', '400'] as const).map((v) => storage.copy(inboxKey(it.id, v), photoKey(book.id, photoId, v))),
-    );
+    await Promise.all([
+      ...(['orig', '1600', '400'] as const).map((v) => storage.copy(inboxKey(it.id, v), photoKey(book.id, photoId, v))),
+      it.videoKey && storage.copy(it.videoKey, photoVideoKey(book.id, photoId)),
+    ]);
     await db.transaction(async (tx) => {
       await tx.insert(s.photos).values({
         id: photoId,
@@ -127,6 +138,8 @@ export async function inboxRoutes(app: FastifyInstance) {
         thumbKey: photoKey(book.id, photoId, '400'),
         width: it.width,
         height: it.height,
+        videoKey: it.videoKey ? photoVideoKey(book.id, photoId) : null,
+        durationMs: it.durationMs,
         subject: it.subject,
         caption: it.caption,
         uploadedBy: it.uploadedBy,

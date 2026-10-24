@@ -48,7 +48,7 @@ export function Spine({
           <div style={{ ...band, top: 40 }} />
           <div style={{ ...band, top: 56 }} />
           <div style={{ ...band, bottom: 74 }} />
-          <div className={s.spineText} style={{ top: 84, bottom: 96, font: `500 ${fs}px/1 var(--font-serif)`, letterSpacing: '.08em', color: '#E6C77E', textShadow: '0 1px 0 rgba(0,0,0,.5), 0 0 1px rgba(255,230,160,.6)' }}>
+          <div className={s.spineText} style={{ top: 84, bottom: 96, font: `500 ${fs}px/1 var(--font-display)`, letterSpacing: '.08em', color: '#E6C77E', textShadow: '0 1px 0 rgba(0,0,0,.5), 0 0 1px rgba(255,230,160,.6)' }}>
             {name}
           </div>
         </>
@@ -59,7 +59,7 @@ export function Spine({
           <div style={{ position: 'absolute', left: 0, right: 0, bottom: 26, height: 5, background: 'rgba(0,0,0,.18)' }} />
           <div
             className={s.spineText}
-            style={{ left: '12%', right: '12%', top: 70, bottom: 100, background: '#F2E9D8', borderRadius: 2, boxShadow: 'inset 0 0 0 1px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.25)', font: `italic 500 ${fs}px/1 var(--font-serif)`, color: '#3A3026', letterSpacing: '.02em' }}
+            style={{ left: '12%', right: '12%', top: 70, bottom: 100, background: '#F2E9D8', borderRadius: 2, boxShadow: 'inset 0 0 0 1px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.25)', font: `italic 500 ${fs}px/1 var(--font-display)`, color: '#3A3026', letterSpacing: '.02em' }}
           >
             {name}
           </div>

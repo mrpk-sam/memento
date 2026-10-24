@@ -18,6 +18,8 @@ export function photoDto(p: PhotoRow) {
     height: p.height,
     thumbUrl: mediaUrl(p.thumbKey),
     displayUrl: mediaUrl(p.displayKey),
+    videoUrl: mediaUrl(p.videoKey),
+    durationMs: p.durationMs,
   };
 }
 

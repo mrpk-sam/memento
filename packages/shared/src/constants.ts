@@ -61,6 +61,7 @@ export const BOOK_SIZE = {
 
 export const LIMITS = {
   maxUploadBytes: 25 * 1024 * 1024,
+  maxVideoBytes: 50 * 1024 * 1024,
   thumbPx: 400,
   displayPx: 1600,
   inviteDays: 7,

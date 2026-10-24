@@ -52,9 +52,15 @@ export function Lightbox({ lb, list, vw, vh, onClose, onStep }: { lb: LbState; l
       >
         <div className={s.tape} />
         <div className={s.img} style={{ height: imgH, background: `repeating-linear-gradient(135deg, rgba(255,255,255,.22) 0 12px, transparent 12px 24px), oklch(0.84 0.055 ${p.hue ?? 60})` }}>
-          {p.src && <img src={p.src} alt="" className={s.cover} />}
-          {p.full && p.full !== p.src && <img src={p.full} alt="" className={s.cover} style={{ opacity: loaded === p.id ? 1 : 0 }} onLoad={() => setLoaded(p.id)} />}
-          {!p.src && <span className={s.subject}>{p.subject}</span>}
+          {p.video ? (
+            <video key={p.id} src={p.video} poster={p.full ?? p.src ?? undefined} controls playsInline preload="metadata" className={s.video} />
+          ) : (
+            <>
+              {p.src && <img src={p.src} alt="" className={s.cover} />}
+              {p.full && p.full !== p.src && <img src={p.full} alt="" className={s.cover} style={{ opacity: loaded === p.id ? 1 : 0 }} onLoad={() => setLoaded(p.id)} />}
+              {!p.src && <span className={s.subject}>{p.subject}</span>}
+            </>
+          )}
         </div>
         <div className={s.foot}>
           <div className={s.caption} style={{ fontSize: W > 600 ? 34 : 28 }}>{p.caption}</div>

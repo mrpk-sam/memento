@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { MONTHS, STICKER_PACKS, capacity, chapterList, chapters, hasMonthChapter, nextYear, poss, stepTarget, yearSpread } from '@memento/shared';
 import type { BookContent, Theme } from '../../api/types';
 import { SizeControls, TexturePicker } from '../../components/CoverControls';
+import { MEDIA_ACCEPT } from '../../lib/upload';
 import { useBookPatch } from '../../lib/useBookPatch';
 import type { BookEditor } from './useBookEditor';
 import { hueOf, themeOf } from './resolve';
@@ -193,13 +194,13 @@ export function EditPanel({ content, themes, L, single, goTo, selPhoto, setSelPh
             style={{ borderColor: dragOver ? 'var(--accent)' : 'var(--tan)', background: dragOver ? 'color-mix(in srgb, var(--accent) 8%, var(--surface))' : 'var(--surface)', transform: `scale(${dragOver ? 1.02 : 1})` }}
           >
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 16V4" /><path d="M7 9l5-5 5 5" /><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" /></svg>
-            <div className={s.dropTitle}>Drop photos here or <span>browse</span></div>
+            <div className={s.dropTitle}>Drop photos or videos here or <span>browse</span></div>
             <div className={s.hint}>Captions are written automatically as they land</div>
           </div>
           <input
             ref={fileRef}
             type="file"
-            accept="image/*"
+            accept={MEDIA_ACCEPT}
             multiple
             hidden
             onChange={(e) => {

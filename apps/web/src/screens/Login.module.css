@@ -2,7 +2,7 @@
 .card { width: 100%; max-width: 440px; background: var(--surface); color: var(--ink); border-radius: 18px; box-shadow: 0 40px 80px -30px rgba(0,0,0,.5); display: flex; flex-direction: column; gap: 18px; }
 .head { display: flex; align-items: center; gap: 14px; }
 .icon { width: 48px; height: 48px; flex: none; border-radius: 12px; background: var(--surface2); display: flex; align-items: center; justify-content: center; transition: color .3s; }
-.title { font: 400 24px/1.15 var(--font-serif); }
+.title { font: 400 24px/1.15 var(--font-display); }
 .sub { margin-top: 4px; font: 400 14px/1.45 var(--font-ui); color: var(--ink2); }
 .row { display: flex; gap: 10px; }
 .input { flex: 1; min-width: 0; height: 46px; padding: 0 14px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--field); color: var(--ink); font: 500 15px/1 var(--font-ui); outline: none; transition: border-color .2s; }

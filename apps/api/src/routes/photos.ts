@@ -7,10 +7,11 @@ import type { Db } from '../db/client.js';
 import * as s from '../db/schema.js';
 import { loadPages, type PageDto } from '../lib/content.js';
 import { badRequest, forbidden, notFound, parse } from '../lib/http.js';
-import { processImage, subjectFromName, type Processed } from '../lib/images.js';
-import { photoKey } from '../lib/s3.js';
+import { processImage, subjectFromName } from '../lib/images.js';
+import { photoKey, photoVideoKey } from '../lib/s3.js';
 import { requireUser, type SessionUser } from '../lib/session.js';
-import { MAX_OPEN_UPLOADS, isAllowedType, noteIssued, openUploads, readUpload, uploadError, uploadKey } from '../lib/uploads.js';
+import { MAX_OPEN_UPLOADS, isAllowedType, maxBytesFor, noteIssued, openUploads, readUpload, uploadError, uploadKey } from '../lib/uploads.js';
+import { processMedia, type Media } from '../lib/videos.js';
 import { loadBookContent, requireEdit } from './content.js';
 
 const MAX_FILES = 20;
@@ -39,8 +40,9 @@ export async function photoRoutes(app: FastifyInstance) {
       req.body,
     );
     for (const f of files) {
-      if (f.size > LIMITS.maxUploadBytes) throw badRequest(`${f.name} is over 25 MB`);
-      if (!isAllowedType(f.type)) throw badRequest(`${f.name} isn't a photo we can use. Try JPEG, PNG, HEIC or WebP.`);
+      if (!isAllowedType(f.type)) throw badRequest(`${f.name} isn't a photo or video we can use. Try JPEG, PNG, HEIC, WebP or any video.`);
+      const max = maxBytesFor(f.type);
+      if (f.size > max) throw badRequest(`${f.name} is over ${max / 1024 / 1024} MB`);
     }
     if ((await openUploads(storage, user.id)) + files.length > MAX_OPEN_UPLOADS) {
       throw badRequest('Too many uploads are still waiting. Let them finish, then try again.');
@@ -72,7 +74,7 @@ export async function photoRoutes(app: FastifyInstance) {
 
   // Raw body upload target for the API-signed URLs. Scoped so JSON routes are unaffected.
   await app.register(async (scope) => {
-    scope.addContentTypeParser('*', { parseAs: 'buffer', bodyLimit: LIMITS.maxUploadBytes }, (_req, body, done) => done(null, body));
+    scope.addContentTypeParser('*', { parseAs: 'buffer', bodyLimit: LIMITS.maxVideoBytes }, (_req, body, done) => done(null, body));
     scope.put<{ Params: { id: string }; Querystring: { exp?: string; sig?: string } }>('/api/uploads/:id', async (req) => {
       const user = requireUser(req);
       const { id } = req.params;
@@ -88,14 +90,14 @@ export async function photoRoutes(app: FastifyInstance) {
     });
   });
 
-  /** Reads and processes uploads. Bad files are reported, not fatal. */
-  async function readUploads(userId: string, refs: z.infer<typeof UploadRef>[]) {
-    const ok: { ref: (typeof refs)[number]; img: Processed }[] = [];
+  /** Reads and processes uploads: photos or videos, or photos only. Bad files are reported, not fatal. */
+  async function readUploads(userId: string, refs: z.infer<typeof UploadRef>[], kind: 'media' | 'photo' = 'media') {
+    const ok: { ref: (typeof refs)[number]; img: Media }[] = [];
     const skipped: { name: string; error: string }[] = [];
     for (const ref of refs) {
       try {
-        const buf = await readUpload(storage, userId, ref.id);
-        ok.push({ ref, img: await processImage(buf) });
+        const buf = await readUpload(storage, userId, ref.id, kind === 'photo');
+        ok.push({ ref, img: kind === 'photo' ? { ...(await processImage(buf)), video: null, durationMs: null } : await processMedia(buf) });
       } catch (e) {
         skipped.push({ name: ref.name, error: uploadError(e) });
       }
@@ -103,17 +105,18 @@ export async function photoRoutes(app: FastifyInstance) {
     return { ok, skipped };
   }
 
-  async function storeVariants(bookId: string, photoId: string, img: Processed) {
+  async function storeVariants(bookId: string, photoId: string, img: Media) {
     await Promise.all([
       storage.put(photoKey(bookId, photoId, 'orig'), img.orig),
       storage.put(photoKey(bookId, photoId, '1600'), img.display),
       storage.put(photoKey(bookId, photoId, '400'), img.thumb),
+      img.video && storage.put(photoVideoKey(bookId, photoId), img.video, 'video/mp4'),
     ]);
   }
 
   const cleanup = (userId: string, refs: { id: string }[]) => Promise.allSettled(refs.map((r) => storage.delete(uploadKey(userId, r.id))));
 
-  /** Step 2: process uploads and place them on the spread they were dropped on. */
+  /** Step 2: process uploads (photos or videos) and place them on the spread they were dropped on. */
   app.post<{ Params: { id: string } }>('/api/books/:id/photos', async (req) => {
     const user = requireUser(req);
     const book = await requireEdit(db, user, req.params.id);
@@ -147,6 +150,8 @@ export async function photoRoutes(app: FastifyInstance) {
             thumbKey: photoKey(book.id, f.photoId, '400'),
             width: f.img.width,
             height: f.img.height,
+            videoKey: f.img.video ? photoVideoKey(book.id, f.photoId) : null,
+            durationMs: f.img.durationMs,
             subject: subjectFromName(f.ref.name),
             takenAt: f.img.takenAt,
             uploadedBy: user.id,
@@ -175,7 +180,8 @@ export async function photoRoutes(app: FastifyInstance) {
     if (!title) throw badRequest('This book has no title page');
     let heroId: string | null;
     if ('upload' in v) {
-      const { ok, skipped } = await readUploads(user.id, [v.upload]);
+      // The cover is always a still photo.
+      const { ok, skipped } = await readUploads(user.id, [v.upload], 'photo');
       if (!ok[0]) throw badRequest(skipped[0]?.error ?? 'Upload failed');
       heroId = randomUUID();
       await storeVariants(book.id, heroId, ok[0].img);

@@ -17,6 +17,9 @@ export type ObjectVariant = 'orig' | '1600' | '400';
 /** books/{bookId}/{photoId}/{orig|1600|400}.jpg */
 export const photoKey = (bookId: string, photoId: string, v: ObjectVariant) => `books/${bookId}/${photoId}/${v}.jpg`;
 export const inboxKey = (itemId: string, v: ObjectVariant) => `inbox/${itemId}/${v}.jpg`;
+/** A video's playable MP4, next to its poster frame JPEGs. */
+export const photoVideoKey = (bookId: string, photoId: string) => `books/${bookId}/${photoId}/video.mp4`;
+export const inboxVideoKey = (itemId: string) => `inbox/${itemId}/video.mp4`;
 
 export function createStorage(e: Env) {
   const base = { region: e.S3_REGION, forcePathStyle: e.S3_FORCE_PATH_STYLE, credentials: { accessKeyId: e.S3_ACCESS_KEY, secretAccessKey: e.S3_SECRET_KEY } };
@@ -57,10 +60,10 @@ export function createStorage(e: Env) {
       const res = await client.send(new HeadObjectCommand({ Bucket, Key }));
       return { size: res.ContentLength ?? 0 };
     },
-    /** Streams an object for the media proxy. */
-    async stream(Key: string) {
-      const res = await client.send(new GetObjectCommand({ Bucket, Key }));
-      return { body: res.Body as NodeJS.ReadableStream, contentType: res.ContentType ?? 'image/jpeg', length: res.ContentLength };
+    /** Streams an object (or one byte range of it, for video) for the media proxy. */
+    async stream(Key: string, Range?: string) {
+      const res = await client.send(new GetObjectCommand({ Bucket, Key, Range }));
+      return { body: res.Body as NodeJS.ReadableStream, contentType: res.ContentType ?? 'image/jpeg', length: res.ContentLength, range: res.ContentRange };
     },
     /** Every object under a prefix, with its last-modified time. */
     async list(Prefix: string) {

@@ -7,7 +7,7 @@
 .main { min-width: 0; max-width: 1240px; width: 100%; }
 
 /* Shared Desk typography and controls. */
-.h2 { margin: 0; font: 400 36px/1.1 var(--font-serif); }
+.h2 { margin: 0; font: 400 36px/1.1 var(--font-display); }
 .lead { margin: 8px 0 0; max-width: 560px; font: 400 15px/1.5 var(--font-ui); color: var(--ink2); text-wrap: pretty; }
 .headRow { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .btnInk { height: 42px; padding: 0 18px; border-radius: 999px; border: 0; background: var(--ink); color: var(--bg); font: 500 14px/1 var(--font-ui); display: flex; align-items: center; gap: 8px; cursor: pointer; white-space: nowrap; }

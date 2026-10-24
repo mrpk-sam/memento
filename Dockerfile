@@ -17,6 +17,8 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm --filter @memento/api dep
 
 FROM node:24-slim AS runtime
 ENV NODE_ENV=production PORT=3000
+# ffmpeg converts uploaded videos to MP4 and grabs their poster frames.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /out/node_modules ./node_modules
 COPY --from=build /out/package.json ./package.json

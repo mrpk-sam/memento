@@ -24,21 +24,27 @@ export async function contentRoutes(app: FastifyInstance) {
   });
 
   /**
-   * Image proxy. The bucket stays private; signed-in users get images through here.
+   * Image and video proxy. The bucket stays private; signed-in users get media through here.
    * Keys are unique per photo and never rewritten, so they can be cached forever.
+   * A single byte range is passed through: Safari only plays video that it can fetch in ranges.
    */
   app.get<{ Params: { '*': string } }>('/api/media/*', async (req, reply) => {
     const user = requireUser(req);
     const key = req.params['*'];
-    if (!/^(books|inbox)\/[\w-]+\/[\w-]+\/(orig|1600|400)\.jpg$/.test(key) && !/^inbox\/[\w-]+\/(orig|1600|400)\.jpg$/.test(key)) throw notFound();
+    if (!/^(books\/[\w-]+\/[\w-]+|inbox\/[\w-]+)\/((orig|1600|400)\.jpg|video\.mp4)$/.test(key)) throw notFound();
     if (key.startsWith('inbox/') && user.access !== 'admin') throw forbidden();
+    const range = req.headers.range;
+    const oneRange = typeof range === 'string' && /^bytes=(\d+-\d*|-\d+)$/.test(range) ? range : undefined;
     try {
-      const obj = await storage.stream(key);
-      reply.header('content-type', obj.contentType).header('cache-control', 'private, max-age=31536000, immutable');
+      const obj = await storage.stream(key, oneRange);
+      reply.header('content-type', obj.contentType).header('cache-control', 'private, max-age=31536000, immutable').header('accept-ranges', 'bytes');
+      if (oneRange && obj.range) reply.code(206).header('content-range', obj.range);
       if (obj.length) reply.header('content-length', obj.length);
       return reply.send(obj.body);
     } catch (e) {
-      if ((e as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode === 404) throw notFound();
+      const status = (e as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
+      if (status === 404) throw notFound();
+      if (status === 416) throw new HttpError(416, 'Range not satisfiable');
       throw e;
     }
   });

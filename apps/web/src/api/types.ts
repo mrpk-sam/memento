@@ -61,6 +61,9 @@ export interface PhotoDto {
   height: number | null;
   thumbUrl: string | null;
   displayUrl: string | null;
+  /** Set for a video. thumbUrl and displayUrl are then its poster frame. */
+  videoUrl: string | null;
+  durationMs: number | null;
 }
 
 export interface PageDto {
@@ -137,6 +140,8 @@ export interface InboxItem {
   caption: string;
   thumbUrl: string | null;
   displayUrl: string | null;
+  videoUrl: string | null;
+  durationMs: number | null;
   destBookId: string | null;
   destPageId: string | null;
   createdAt: string;

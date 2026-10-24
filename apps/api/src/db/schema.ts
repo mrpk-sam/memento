@@ -207,6 +207,9 @@ export const photos = pgTable(
     displayKey: text('display_key'),
     width: integer('width'),
     height: integer('height'),
+    /** Set for a video. The other keys then hold its poster frame. */
+    videoKey: text('video_key'),
+    durationMs: integer('duration_ms'),
     subject: text('subject').notNull().default(''),
     caption: text('caption').notNull().default(''),
     month: smallint('month'),
@@ -226,6 +229,8 @@ export const inboxItems = pgTable('inbox_items', {
   displayKey: text('display_key'),
   width: integer('width'),
   height: integer('height'),
+  videoKey: text('video_key'),
+  durationMs: integer('duration_ms'),
   subject: text('subject').notNull().default(''),
   caption: text('caption').notNull().default(''),
   destBookId: uuid('dest_book_id').references(() => books.id, { onDelete: 'set null' }),

@@ -7,7 +7,7 @@
 .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px 28px; align-items: start; }
 .col { display: flex; flex-direction: column; gap: 10px; }
 .colHead { font: 600 12px/1 var(--font-ui); color: var(--ink2); letter-spacing: .06em; text-transform: uppercase; }
-.title { font: 400 21px/1.2 var(--font-serif); }
+.title { font: 400 21px/1.2 var(--font-display); }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .input { height: 36px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--ink); padding: 0 10px; font: 500 14px/1 var(--font-ui); width: 100%; }
 .spineInput { width: 100%; height: 34px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--ink); padding: 0 10px; font: 500 13px/1 var(--font-ui); }

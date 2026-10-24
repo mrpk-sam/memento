@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useBook, useLibrary, useThemes } from '../../api/hooks';
+import { MEDIA_ACCEPT } from '../../lib/upload';
 import { EditPanel } from './EditPanel';
 import { Reader } from './Reader';
 import { useBookEditor } from './useBookEditor';
@@ -51,7 +52,7 @@ export function BookScreen() {
       <input
         ref={photosRef}
         type="file"
-        accept="image/*"
+        accept={MEDIA_ACCEPT}
         multiple
         hidden
         onChange={(e) => {

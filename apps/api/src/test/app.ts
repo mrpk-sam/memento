@@ -36,6 +36,7 @@ export const testEnv: Env = {
 /** In-memory stand-in for MinIO. */
 export function memoryStorage(): Storage & { objects: Map<string, Buffer> } {
   const objects = new Map<string, Buffer>();
+  const types = new Map<string, string>();
   return {
     objects,
     client: null as never,
@@ -43,7 +44,10 @@ export function memoryStorage(): Storage & { objects: Map<string, Buffer> } {
     ensureBucket: async () => 'exists' as const,
     presignPut: async (key: string) => `http://minio.test/memento/${key}?signed`,
     presignGet: async (key: string) => `http://minio.test/memento/${key}?signed`,
-    put: async (key: string, body: Buffer) => void objects.set(key, body),
+    put: async (key: string, body: Buffer, type = 'image/jpeg') => {
+      objects.set(key, body);
+      types.set(key, type);
+    },
     get: async (key: string) => {
       const b = objects.get(key);
       if (!b) throw Object.assign(new Error('NoSuchKey'), { name: 'NoSuchKey', $metadata: { httpStatusCode: 404 } });
@@ -54,14 +58,25 @@ export function memoryStorage(): Storage & { objects: Map<string, Buffer> } {
       if (!b) throw Object.assign(new Error('NotFound'), { name: 'NotFound', $metadata: { httpStatusCode: 404 } });
       return { size: b.length };
     },
-    stream: async (key: string) => {
+    stream: async (key: string, range?: string) => {
       const b = objects.get(key);
       if (!b) throw Object.assign(new Error('NoSuchKey'), { name: 'NoSuchKey', $metadata: { httpStatusCode: 404 } });
-      return { body: b as unknown as NodeJS.ReadableStream, contentType: 'image/jpeg', length: b.length };
+      const contentType = types.get(key) ?? 'image/jpeg';
+      if (!range) return { body: b as unknown as NodeJS.ReadableStream, contentType, length: b.length, range: undefined };
+      // Same rules as S3 for one range: "a-b", "a-" or "-suffix".
+      const [, from, to] = /^bytes=(\d*)-(\d*)$/.exec(range)!;
+      const start = from ? Number(from) : Math.max(0, b.length - Number(to));
+      const end = from && to ? Math.min(Number(to), b.length - 1) : b.length - 1;
+      if (start >= b.length) throw Object.assign(new Error('InvalidRange'), { name: 'InvalidRange', $metadata: { httpStatusCode: 416 } });
+      const part = b.subarray(start, end + 1);
+      return { body: part as unknown as NodeJS.ReadableStream, contentType, length: part.length, range: `bytes ${start}-${end}/${b.length}` };
     },
     list: async (prefix: string) => [...objects.keys()].filter((k) => k.startsWith(prefix)).map((key) => ({ key, lastModified: new Date(0) })),
     delete: async (key: string) => void objects.delete(key),
-    copy: async (from: string, to: string) => void objects.set(to, objects.get(from)!),
+    copy: async (from: string, to: string) => {
+      objects.set(to, objects.get(from)!);
+      types.set(to, types.get(from) ?? 'image/jpeg');
+    },
   } as Storage & { objects: Map<string, Buffer> };
 }
 

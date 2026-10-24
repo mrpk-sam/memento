@@ -5,7 +5,7 @@ import { ApiError, api, errorMessage } from '../../api/client';
 import { qk } from '../../api/hooks';
 import type { BookContent, PageDto, PhotoDto } from '../../api/types';
 import { useToast } from '../../lib/toast';
-import { imageFiles, uploadFiles } from '../../lib/upload';
+import { imageFiles, isVideoFile, mediaFiles, uploadFiles } from '../../lib/upload';
 
 type Saved = 'All changes saved' | 'Saving…' | 'Saved just now';
 type LayoutEntry = { id: string; pageId: string | null; position: number; month: number | null };
@@ -257,8 +257,8 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
 
     /** Uploads dropped files and places them like the prototype's uploadToSpread(). */
     async uploadToSpread(list: FileList | File[], L: number, single: boolean, side?: 'L' | 'R') {
-      const files = imageFiles(list);
-      if (!files.length) return toast('Only image files can be added.');
+      const files = mediaFiles(list);
+      if (!files.length) return toast('Only photos and videos can be added.');
       const c = get();
       if (!c) return;
       // Show the photos at once, with local previews, while they upload.
@@ -266,15 +266,16 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
       const probe = placeOnSpread(c.pages, L, { single, side }, temp);
       if (probe.kind === 'no-slots') return toast('This spread has no photo slots. Turn to a year or month first.');
       if (probe.kind === 'year-full') return toast('This year is full. Remove a photo or change a month to replace one.');
-      const urls = new Map(temp.map((t) => [t.id, URL.createObjectURL(t.file)]));
+      // A browser can't show a video file as an image, so videos wait as a blank tile until their poster arrives.
+      const urls = new Map(temp.flatMap((t) => (isVideoFile(t.file) ? [] : [[t.id, URL.createObjectURL(t.file)] as const])));
       const toDto = (p: { id: string; month: number | null }): PhotoDto => {
         const t = temp.find((x) => x.id === p.id);
         if (!t) return p as PhotoDto;
-        const u = urls.get(t.id)!;
-        return { id: t.id, pageId: null, position: 0, subject: t.file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' '), caption: '', month: p.month, width: null, height: null, thumbUrl: u, displayUrl: u };
+        const u = urls.get(t.id) ?? null;
+        return { id: t.id, pageId: null, position: 0, subject: t.file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' '), caption: '', month: p.month, width: null, height: null, thumbUrl: u, displayUrl: u, videoUrl: null, durationMs: null };
       };
       setPages(() => probe.pages.map((pg) => ({ ...(pg as PageDto), photos: (pg.photos ?? []).map(toDto) })));
-      setBusy([...urls.keys()], true);
+      setBusy(temp.map((t) => t.id), true);
 
       type PhotosRes = BookContent & { kind: 'year' | 'pages'; added: { id: string; month: number | null }[]; left: number; skipped: { name: string; error: string }[] };
       // Files upload in parallel, then each is processed in its own short request, so a
@@ -307,7 +308,7 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
         // The totals across every photo must win over the last reply's own added/left/skipped.
         return { ...(out.content ?? { book: get()!.book, pages: get()!.pages }), ...out };
       });
-      setBusy([...urls.keys()], false);
+      setBusy(temp.map((t) => t.id), false);
       urls.forEach((u) => URL.revokeObjectURL(u));
       if (!res) return;
       if (res.content) setContent(res.content);

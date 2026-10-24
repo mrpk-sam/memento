@@ -12,7 +12,7 @@
 .builder { margin-top: 44px; padding: 28px; border-radius: 20px; background: var(--surface); border: 1px solid var(--line); display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 32px; align-items: start; }
 .form { display: flex; flex-direction: column; gap: 20px; }
 .kicker { font: 600 11px/1 var(--font-ui); letter-spacing: .24em; text-transform: uppercase; color: var(--accent); }
-.title { margin-top: 8px; font: 400 26px/1.15 var(--font-serif); }
+.title { margin-top: 8px; font: 400 26px/1.15 var(--font-display); }
 .label { display: flex; flex-direction: column; gap: 8px; font: 600 13px/1 var(--font-ui); }
 .input { height: 42px; border-radius: 10px; border: 1px solid var(--line); background: var(--field); color: var(--ink); padding: 0 12px; font: 400 15px/1 var(--font-ui); }
 .row { display: flex; flex-direction: column; gap: 10px; }

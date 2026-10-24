@@ -32,7 +32,7 @@ export default defineConfig({
           action: '/share-target',
           method: 'POST',
           enctype: 'multipart/form-data',
-          params: { title: 'title', text: 'text', files: [{ name: 'photos', accept: ['image/*', '.heic', '.heif', '.jpg', '.jpeg', '.png'] }] },
+          params: { title: 'title', text: 'text', files: [{ name: 'photos', accept: ['image/*', 'video/*', '.heic', '.heif', '.jpg', '.jpeg', '.png', '.mp4', '.mov'] }] },
         },
       },
     }),

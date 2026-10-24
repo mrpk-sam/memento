@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import sharp from 'sharp';
 import { LIMITS } from '@memento/shared';
 import { ADMIN, createTestApp } from '../test/app.js';
+import { makeClip } from '../test/video.js';
 
 let t: Awaited<ReturnType<typeof createTestApp>>;
 let admin: string;
@@ -35,8 +36,10 @@ beforeAll(async () => {
 afterAll(() => t.close());
 
 describe('uploads', () => {
-  it('rejects files over 25 MB and non-images up front', async () => {
+  it('rejects photos over 25 MB, videos over 50 MB and other files up front', async () => {
     expect((await api(admin, 'POST', '/api/uploads', { files: [{ name: 'a.jpg', type: 'image/jpeg', size: 26 * 1024 * 1024 }] })).statusCode).toBe(400);
+    expect((await api(admin, 'POST', '/api/uploads', { files: [{ name: 'a.mov', type: 'video/quicktime', size: 51 * 1024 * 1024 }] })).statusCode).toBe(400);
+    expect((await api(admin, 'POST', '/api/uploads', { files: [{ name: 'a.mkv', type: 'video/x-matroska', size: 49 * 1024 * 1024 }] })).statusCode).toBe(200);
     expect((await api(admin, 'POST', '/api/uploads', { files: [{ name: 'a.pdf', type: 'application/pdf', size: 10 }] })).statusCode).toBe(400);
     expect((await api(admin, 'POST', '/api/uploads', { files: [{ name: 'a.svg', type: 'image/svg+xml', size: 10 }] })).statusCode).toBe(400);
   });
@@ -92,13 +95,44 @@ describe('adding photos to a year spread', () => {
     const bad = await upload(admin, ['broken.jpg'], Buffer.from('nope'));
     const res = await api(admin, 'POST', `/api/books/${bookId}/photos`, { uploads: [...good, ...bad], L: 4, single: false });
     expect(res.json().added).toHaveLength(1);
-    expect(res.json().skipped).toEqual([{ name: 'broken.jpg', error: "That file isn't a photo we can read" }]);
+    expect(res.json().skipped).toEqual([{ name: 'broken.jpg', error: "That file isn't a photo or video we can use" }]);
   });
 
   it('needs edit rights', async () => {
     expect((await api(member, 'POST', '/api/uploads', { files: [{ name: 'x.jpg', type: 'image/jpeg', size: 10 }] })).statusCode).toBe(403);
     const ups = await upload(admin, ['x.jpg']);
     expect((await api(member, 'POST', `/api/books/${bookId}/photos`, { uploads: ups, L: 4, single: false })).statusCode).toBe(403);
+  });
+});
+
+describe('adding videos', () => {
+  it('stores a playable MP4 with a poster, and serves it in byte ranges', async () => {
+    const avi = await makeClip('party.avi', ['-c:v', 'mpeg4', '-c:a', 'mp2'], 2);
+    const ups = await upload(admin, ['party.avi'], avi);
+    const res = await api(admin, 'POST', `/api/books/${bookId}/photos`, { uploads: ups, L: 4, single: false, side: 'L' });
+    expect(res.json()).toMatchObject({ skipped: [] });
+    const id = res.json().added[0].id as string;
+    const v = res.json().pages.flatMap((p: Content['pages'][number]) => p.photos).find((p: { id: string }) => p.id === id);
+    expect(v).toMatchObject({ subject: 'party', videoUrl: `/api/media/books/${bookId}/${id}/video.mp4` });
+    expect(v.durationMs).toBeGreaterThan(1500);
+    expect((await sharp((await t.app.inject({ url: v.thumbUrl, headers: { cookie: member } })).rawPayload).metadata()).format).toBe('jpeg');
+
+    const whole = await t.app.inject({ url: v.videoUrl, headers: { cookie: member } });
+    expect(whole.statusCode).toBe(200);
+    expect(whole.headers['content-type']).toBe('video/mp4');
+    expect(whole.headers['accept-ranges']).toBe('bytes');
+    const part = await t.app.inject({ url: v.videoUrl, headers: { cookie: member, range: 'bytes=0-99' } });
+    expect(part.statusCode).toBe(206);
+    expect(part.headers['content-range']).toBe(`bytes 0-99/${whole.rawPayload.length}`);
+    expect(part.rawPayload).toEqual(whole.rawPayload.subarray(0, 100));
+    expect((await t.app.inject({ url: v.videoUrl, headers: { cookie: member, range: 'bytes=99999999-' } })).statusCode).toBe(416);
+  });
+
+  it('keeps the cover a still photo', async () => {
+    const mp4 = await makeClip('clip.mp4', ['-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p'], 1);
+    const [ref] = await upload(admin, ['clip.mp4'], mp4);
+    const res = await api(admin, 'PUT', `/api/books/${bookId}/hero`, { upload: ref });
+    expect(res.statusCode).toBe(400);
   });
 });
 

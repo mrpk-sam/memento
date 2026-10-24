@@ -61,13 +61,13 @@ describe('photo inbox', () => {
     expect(res.json().error).toBe('2026 in photos is full in that book. Pick another chapter.');
   });
 
-  it('refuses an upload over 25 MB by its stored size and deletes it', async () => {
+  it('refuses an upload over 50 MB by its stored size and deletes it', async () => {
     const [u] = (await api(admin, 'POST', '/api/uploads', { files: [{ name: 'huge.jpg', type: 'image/jpeg', size: jpeg.length }] })).json().uploads;
     await t.app.inject({ method: 'PUT', url: u.url, payload: jpeg, headers: { cookie: admin, 'content-type': 'image/jpeg' } });
     const key = [...t.storage.objects.keys()].find((k) => k.endsWith(u.id))!;
-    t.storage.objects.set(key, Buffer.alloc(25 * 1024 * 1024 + 1));
+    t.storage.objects.set(key, Buffer.alloc(50 * 1024 * 1024 + 1));
     const res = (await api(admin, 'POST', '/api/inbox', { uploads: [{ id: u.id, name: 'huge.jpg' }] })).json();
-    expect(res).toEqual({ items: [], skipped: [{ name: 'huge.jpg', error: 'Photos can be up to 25 MB' }] });
+    expect(res).toEqual({ items: [], skipped: [{ name: 'huge.jpg', error: 'Videos can be up to 50 MB and photos up to 25 MB' }] });
     expect(t.storage.objects.has(key)).toBe(false);
   });
 

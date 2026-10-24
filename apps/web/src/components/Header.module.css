@@ -2,7 +2,7 @@
 .brand { display: flex; align-items: center; gap: 10px; background: none; border: 0; cursor: pointer; color: inherit; padding: 0; }
 .mark { display: flex; gap: 2px; align-items: flex-end; height: 24px; }
 .mark > span { width: 6px; border-radius: 1.5px; }
-.word { font: italic 500 25px/1 var(--font-serif); letter-spacing: -.01em; }
+.word { font: italic 500 25px/1 var(--font-display); letter-spacing: -.01em; }
 .nav { gap: 4px; }
 .pill { height: 36px; padding: 0 14px; border-radius: 999px; border: 0; cursor: pointer; font: 500 14px/1 var(--font-ui); white-space: nowrap; transition: background .2s, color .2s; }
 .pill:hover { background: var(--surface2) !important; }

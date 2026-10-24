@@ -42,6 +42,9 @@ export const Photo = z.object({
   height: z.number().int().nullable(),
   thumbUrl: z.string().nullable(),
   displayUrl: z.string().nullable(),
+  /** Set when the item is a video. The thumb and display images are its poster frame. */
+  videoUrl: z.string().nullable(),
+  durationMs: z.number().int().nullable(),
 });
 export type Photo = z.infer<typeof Photo>;
 

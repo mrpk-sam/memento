@@ -2,9 +2,21 @@ import { api } from '../api/client';
 
 export interface UploadRef { id: string; name: string }
 
-/** Image files only. HEIC often arrives with an empty MIME type, so the extension counts too. */
-export const imageFiles = (list: FileList | File[] | null | undefined) =>
-  Array.from(list ?? []).filter((f) => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name));
+type Files = FileList | File[] | null | undefined;
+
+/** HEIC often arrives with an empty MIME type, so the extension counts too. */
+const isImageFile = (f: File) => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name);
+
+/** Some containers (MKV, MTS, …) arrive with an empty or odd MIME type, so the extension counts too. */
+export const isVideoFile = (f: File) => f.type.startsWith('video/') || /\.(mp4|m4v|mov|qt|mkv|webm|avi|wmv|asf|flv|3gp|3g2|mpe?g|mts|m2ts|ogv|mxf|dv)$/i.test(f.name);
+
+export const imageFiles = (list: Files) => Array.from(list ?? []).filter(isImageFile);
+
+/** Photos and videos. The server converts any video format to MP4. */
+export const mediaFiles = (list: Files) => Array.from(list ?? []).filter((f) => isImageFile(f) || isVideoFile(f));
+
+/** Accept list for file pickers that take photos and videos. */
+export const MEDIA_ACCEPT = 'image/*,video/*,.heic,.heif,.mkv,.mts,.m2ts,.avi,.wmv,.flv';
 
 /**
  * Two-step upload: ask the API for PUT targets, then send each file straight there.

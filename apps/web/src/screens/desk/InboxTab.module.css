@@ -1,11 +1,12 @@
 .drop { margin-top: 24px; border: 2px dashed; border-radius: 20px; padding: 44px 24px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; cursor: pointer; transition: transform .25s var(--spring), border-color .2s, background .2s; }
 .dropIcon { width: 56px; height: 56px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 12%, transparent); display: flex; align-items: center; justify-content: center; color: var(--accent); }
-.dropTitle { font: 400 22px/1.2 var(--font-serif); }
+.dropTitle { font: 400 22px/1.2 var(--font-display); }
 .dropSub { font: 400 14px/1.4 var(--font-ui); color: var(--ink2); }
 .dropSub > span { color: var(--accent); text-decoration: underline; }
 .grid { margin-top: 24px; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; }
 .card { border-radius: 16px; background: var(--surface); border: 1px solid var(--line); overflow: hidden; display: flex; flex-direction: column; animation: kpop .35s var(--spring) both; }
 .img { height: 170px; }
+.video { display: block; width: 100%; object-fit: cover; background: var(--surface2); }
 .body { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
 .subject { border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--ink2); padding: 4px 6px; margin: -4px -6px 0; font: 500 11px/1.2 var(--font-mono); }
 .subject:hover:not(:disabled) { border-color: var(--line); }

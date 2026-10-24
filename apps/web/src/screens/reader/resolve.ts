@@ -13,6 +13,9 @@ export interface RPhoto {
   month: number | null;
   monthTag?: string;
   loading?: boolean;
+  /** Set for a video: its MP4. src and full are then its poster frame. */
+  video?: string | null;
+  durationMs?: number | null;
 }
 
 export interface Sticker {
@@ -96,7 +99,7 @@ export const blankPage = (): RPage => ({
 export const hueOf = (id: string) => PHOTO_HUES[hash(id) % PHOTO_HUES.length]!;
 
 export function toRPhoto(p: PhotoDto): RPhoto {
-  return { id: p.id, subject: p.subject, caption: p.caption, src: p.thumbUrl, full: p.displayUrl ?? p.thumbUrl, hue: hueOf(p.id), month: p.month };
+  return { id: p.id, subject: p.subject, caption: p.caption, src: p.thumbUrl, full: p.displayUrl ?? p.thumbUrl, hue: hueOf(p.id), month: p.month, video: p.videoUrl, durationMs: p.durationMs };
 }
 
 export const themeOf = (themes: Theme[], id: string) => themes.find((t) => t.id === id) ?? themes[0] ?? CREAM;
@@ -110,9 +113,9 @@ export function stickersFor(pageId: string, pack: string, side: 'left' | 'right'
     const c = i % 2 ? th.accent2 : th.accent;
     const sp = spots[i % spots.length]!;
     const base = { text: it.t, left: sp.x, top: sp.y, rot: Math.round(r * 30 - 15), color: c, w: 'auto', h: 'auto', border: 'none', radius: '0', bg: 'transparent', ls: 'normal' };
-    if (it.k === 'glyph') return { ...base, font: 'Lora, serif', size: it.s ?? 30, weight: 400 };
-    if (it.k === 'stamp') return { ...base, font: 'Outfit, sans-serif', size: 11, weight: 700, ls: '.14em', w: '60px', h: '60px', border: `2px solid ${c}`, radius: '50%', bg: 'rgba(255,255,255,.4)', left: sp.x - 14, top: sp.y - 16 };
-    return { ...base, font: 'Caveat, cursive', size: 28, weight: 700, left: sp.x - 18 };
+    if (it.k === 'glyph') return { ...base, font: 'var(--font-display)', size: it.s ?? 30, weight: 400 };
+    if (it.k === 'stamp') return { ...base, font: 'var(--font-ui)', size: 11, weight: 700, ls: '.14em', w: '60px', h: '60px', border: `2px solid ${c}`, radius: '50%', bg: 'rgba(255,255,255,.4)', left: sp.x - 14, top: sp.y - 16 };
+    return { ...base, font: 'var(--font-script)', size: 28, weight: 700, left: sp.x - 18 };
   });
 }
 

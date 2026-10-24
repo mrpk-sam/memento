@@ -1,7 +1,7 @@
 .back { position: fixed; inset: 0; z-index: 80; background: rgba(30,20,12,.42); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 24px; transition: opacity .5s ease; }
 .card { width: 100%; max-width: 460px; background: var(--surface); color: var(--ink); border-radius: 18px; box-shadow: 0 40px 80px -30px rgba(0,0,0,.5); display: grid; transition: opacity .38s ease, transform .45s cubic-bezier(.4,0,.2,1); }
 .swatch { height: 112px; border-radius: 3px 6px 6px 3px; box-shadow: 4px 6px 14px -6px rgba(0,0,0,.45), inset 4px 0 6px -3px rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; color: #E6C77E; }
-.title { font: 400 24px/1.15 var(--font-serif); }
+.title { font: 400 24px/1.15 var(--font-display); }
 .sub { margin-top: 6px; font: 400 14px/1.45 var(--font-ui); color: var(--ink2); }
 .boxes { position: relative; display: flex; gap: 10px; margin-top: 20px; }
 .box { width: 48px; height: 56px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--field); display: flex; align-items: center; justify-content: center; transition: border-color .2s, transform .2s; }

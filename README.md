@@ -35,6 +35,8 @@ The app creates its tables on first start.
 
 Create an access key for the app, limited to one bucket. The app creates the `memento` bucket if it doesn't exist. Keep the bucket **private**. The app serves images through its own authenticated `/api/media` route.
 
+Books take photos (up to 25 MB) and videos (up to 50 MB, any format; the app converts them to MP4 with ffmpeg, which the Docker image includes). If a reverse proxy sits in front of the app, let it pass request bodies of at least 50 MB and allow a few minutes for a long video to convert.
+
 Uploads work in one of two ways:
 
 - **Default (recommended):** leave `S3_PUBLIC_ENDPOINT` empty. Browsers upload to the app, and the app writes to MinIO. MinIO never needs to be reachable from outside your LAN.

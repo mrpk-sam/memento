@@ -95,8 +95,9 @@ self.addEventListener('message', (e) => {
 });
 
 // Photos: cache-first for recently opened books (keys never change), network for the rest.
+// Videos always go to the network: they play in byte ranges, which the Cache API can't store.
 registerRoute(
-  ({ url }) => url.origin === self.location.origin && url.pathname.startsWith('/api/media/books/'),
+  ({ url }) => url.origin === self.location.origin && url.pathname.startsWith('/api/media/books/') && !url.pathname.endsWith('.mp4'),
   async ({ request, url }) => {
     const bookId = url.pathname.split('/')[4]!;
     if (!(await recentBooks()).includes(bookId)) return fetch(request);
@@ -109,7 +110,7 @@ registerRoute(
   },
 );
 
-// Web Share Target: photos shared from the phone gallery land in the Photo inbox.
+// Web Share Target: photos and videos shared from the phone gallery land in the Photo inbox.
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'POST' || url.pathname !== '/share-target') return;
@@ -117,10 +118,12 @@ self.addEventListener('fetch', (e) => {
     (async () => {
       const form = await e.request.formData();
       const cache = await caches.open(SHARED_CACHE);
-      // Keep only images within the upload limit, and at most MAX_SHARED of them.
+      // Keep only images and videos within their upload limits, and at most MAX_SHARED of them.
+      const fits = (f: File) =>
+        (f.type.startsWith('image/') && f.size <= LIMITS.maxUploadBytes) || (f.type.startsWith('video/') && f.size <= LIMITS.maxVideoBytes);
       const files = form
         .getAll('photos')
-        .filter((f): f is File => f instanceof File && f.type.startsWith('image/') && f.size > 0 && f.size <= LIMITS.maxUploadBytes)
+        .filter((f): f is File => f instanceof File && f.size > 0 && fits(f))
         .slice(0, MAX_SHARED);
       await Promise.all(
         files.map((f, i) =>

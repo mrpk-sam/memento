@@ -30,23 +30,28 @@ export async function openUploads(storage: Storage, userId: string) {
 }
 
 /**
- * What the browser may declare. HEIC often arrives with no type at all, so empty is allowed;
- * processImage checks the real format either way.
+ * What the browser may declare. HEIC and some video containers often arrive with no type at all,
+ * so empty is allowed; processMedia checks the real format either way. Any video type is allowed,
+ * since ffmpeg converts whatever it can read.
  */
 const TYPES = new Set(['image/jpeg', 'image/pjpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/heic-sequence', 'image/heif-sequence', 'image/avif', 'image/tiff', 'image/gif']);
-export const isAllowedType = (type: string) => !type || TYPES.has(type.toLowerCase());
+export const isAllowedType = (type: string) => !type || TYPES.has(type.toLowerCase()) || /^video\//i.test(type);
+
+/** The size cap for a declared type. An unknown type might be a video, so it gets the larger cap. */
+export const maxBytesFor = (type: string) => (/^image\//i.test(type) ? LIMITS.maxUploadBytes : LIMITS.maxVideoBytes);
 
 /**
  * Reads an upload. The size comes from storage, not from the client: a presigned PUT or a
  * proxy could let a bigger object through, and get() reads the whole thing into memory.
  */
-export async function readUpload(storage: Storage, userId: string, id: string): Promise<Buffer> {
+export async function readUpload(storage: Storage, userId: string, id: string, photoOnly = false): Promise<Buffer> {
   issued.get(userId)?.delete(id);
   const key = uploadKey(userId, id);
   const { size } = await storage.head(key);
-  if (size > LIMITS.maxUploadBytes) {
+  // Otherwise photos are held to 25 MB once their format is known (processImage).
+  if (size > (photoOnly ? LIMITS.maxUploadBytes : LIMITS.maxVideoBytes)) {
     await storage.delete(key).catch(() => {});
-    throw badRequest('Photos can be up to 25 MB');
+    throw badRequest(photoOnly ? 'Photos can be up to 25 MB' : 'Videos can be up to 50 MB and photos up to 25 MB');
   }
   return storage.get(key);
 }

@@ -7,7 +7,7 @@ import { qk, useInbox, useLibrary } from '../../api/hooks';
 import type { InboxData, InboxItem } from '../../api/types';
 import { useToast } from '../../lib/toast';
 import { typeOut } from '../../lib/typeOut';
-import { imageFiles, uploadFiles } from '../../lib/upload';
+import { MEDIA_ACCEPT, isVideoFile, mediaFiles, uploadFiles } from '../../lib/upload';
 import d from './Desk.module.css';
 import s from './InboxTab.module.css';
 
@@ -61,11 +61,12 @@ export function InboxTab() {
   }
 
   async function addFiles(list: FileList | File[]) {
-    const files = imageFiles(list);
-    if (!files.length) return toast('Only image files can be added.');
+    const files = mediaFiles(list);
+    if (!files.length) return toast('Only photos and videos can be added.');
     const placeholders: Card[] = files.map((f, i) => {
-      const u = URL.createObjectURL(f);
-      return { id: `tmp-${Date.now()}-${i}`, subject: f.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' '), caption: '', thumbUrl: u, displayUrl: u, destBookId: null, destPageId: null, createdAt: '', pending: true };
+      // A video file can't be shown as an image; its card stays blank until the poster arrives.
+      const u = isVideoFile(f) ? null : URL.createObjectURL(f);
+      return { id: `tmp-${Date.now()}-${i}`, subject: f.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' '), caption: '', thumbUrl: u, displayUrl: u, videoUrl: null, durationMs: null, destBookId: null, destPageId: null, createdAt: '', pending: true };
     });
     setTemp((t) => [...t, ...placeholders]);
     try {
@@ -82,14 +83,14 @@ export function InboxTab() {
           failed.push(errorMessage(e));
         }
         const done = placeholders[i]!;
-        URL.revokeObjectURL(done.thumbUrl!);
+        if (done.thumbUrl) URL.revokeObjectURL(done.thumbUrl);
         setTemp((tmp) => tmp.filter((x) => x !== done));
       }
       if (failed.length) toast(`${failed.length} photo${failed.length > 1 ? 's' : ''} couldn't be added. ${[...new Set(failed)].join(' ')}`);
     } catch (e) {
       toast(errorMessage(e));
     } finally {
-      placeholders.forEach((p) => URL.revokeObjectURL(p.thumbUrl!));
+      placeholders.forEach((p) => p.thumbUrl && URL.revokeObjectURL(p.thumbUrl));
       setTemp((t) => t.filter((x) => !placeholders.includes(x)));
       void qc.invalidateQueries({ queryKey: qk.inbox });
     }
@@ -147,15 +148,15 @@ export function InboxTab() {
         <div className={s.dropIcon}>
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 16V4" /><path d="M7 9l5-5 5 5" /><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" /></svg>
         </div>
-        <div className={s.dropTitle}>Drag photos here</div>
+        <div className={s.dropTitle}>Drag photos or videos here</div>
         <div className={s.dropSub}>
-          or <span>choose from your computer</span> · JPG, PNG, HEIC
+          or <span>choose from your computer</span> · JPG, PNG, HEIC or video
         </div>
       </div>
       <input
         ref={fileRef}
         type="file"
-        accept="image/*"
+        accept={MEDIA_ACCEPT}
         multiple
         hidden
         onChange={(e) => {
@@ -171,7 +172,11 @@ export function InboxTab() {
             const loading = it.pending || busy.has(it.id);
             return (
               <div key={it.id} className={s.card}>
-                <div className={s.img} style={{ background: it.thumbUrl ? `url(${it.thumbUrl}) center/cover` : 'var(--surface2)' }} />
+                {it.videoUrl ? (
+                  <video className={`${s.img} ${s.video}`} src={it.videoUrl} poster={it.displayUrl ?? undefined} controls playsInline preload="none" aria-label={it.subject} />
+                ) : (
+                  <div className={s.img} style={{ background: it.thumbUrl ? `url(${it.thumbUrl}) center/cover` : 'var(--surface2)' }} />
+                )}
                 <div className={s.body}>
                   <input className={s.subject} value={it.subject} disabled={it.pending} aria-label="What's in the photo" title="What's in the photo. The caption is written from this." onChange={(e) => patchItem(it.id, { subject: e.target.value }, 500)} />
                   {loading ? (

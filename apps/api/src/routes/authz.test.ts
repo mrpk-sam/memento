@@ -256,9 +256,9 @@ describe('authorization matrix', () => {
     expect(failures).toEqual([]);
   });
 
-  it('rejects uploads over 25 MB at the upload URL too', async () => {
-    const res = await t.app.inject({ method: 'POST', url: '/api/uploads', headers: { cookie: cookies.admin! }, payload: { files: [{ name: 'a.jpg', type: 'image/jpeg', size: 100 }] } });
-    const big = Buffer.alloc(25 * 1024 * 1024 + 1, 1);
+  it('rejects uploads over 50 MB at the upload URL too', async () => {
+    const res = await t.app.inject({ method: 'POST', url: '/api/uploads', headers: { cookie: cookies.admin! }, payload: { files: [{ name: 'a.mp4', type: 'video/mp4', size: 100 }] } });
+    const big = Buffer.alloc(50 * 1024 * 1024 + 1, 1);
     const put = await t.app.inject({ method: 'PUT', url: res.json().uploads[0].url, payload: big, headers: { cookie: cookies.admin!, 'content-type': 'image/jpeg' } });
     expect(put.statusCode).toBe(413);
   });

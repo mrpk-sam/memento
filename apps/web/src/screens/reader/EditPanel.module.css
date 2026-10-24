@@ -2,7 +2,7 @@
 .headRow { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .kicker { font: 600 11px/1 var(--font-ui); letter-spacing: .24em; text-transform: uppercase; color: var(--accent); }
 .saved { font: 400 12px/1 var(--font-ui); color: var(--ink2); }
-.spread { margin-top: 10px; font: 400 26px/1.15 var(--font-serif); }
+.spread { margin-top: 10px; font: 400 26px/1.15 var(--font-display); }
 .group { display: flex; flex-direction: column; gap: 10px; }
 .label { font: 600 13px/1 var(--font-ui); }
 .hint { font: 400 12px/1.4 var(--font-ui); color: var(--ink2); }

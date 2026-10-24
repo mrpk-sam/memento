@@ -1,5 +1,6 @@
 import { memo, type CSSProperties, type MouseEvent } from 'react';
 import { hash, rng } from '@memento/shared';
+import { duration } from '../../lib/text';
 import type { RPage } from './resolve';
 import s from './ScrapbookPage.module.css';
 
@@ -388,6 +389,7 @@ export const ScrapbookPage = memo(function ScrapbookPage({ page, scale, editMode
                     {ph.src && <img src={ph.src} alt="" loading="lazy" className={s.cover} draggable={false} />}
                     {!ph.src && <span className={s.subject}>{ph.subjectShown}</span>}
                     {ph.monthTag && <span className={s.monthTag} style={{ color: th.accent }}>{ph.monthTag}</span>}
+                    {ph.video && <PlayTag durationMs={ph.durationMs} color={th.accent} />}
                   </div>
                   {ph.loading ? (
                     <div className={s.capLoading}>
@@ -442,3 +444,13 @@ export const ScrapbookPage = memo(function ScrapbookPage({ page, scale, editMode
     </div>
   );
 });
+
+/** Marks a video on its page tile: a play triangle and the running time. */
+function PlayTag({ durationMs, color }: { durationMs?: number | null; color: string }) {
+  return (
+    <span className={s.playTag} style={{ color }} aria-label="Video">
+      <svg width="8" height="9" viewBox="0 0 8 9" fill="currentColor" aria-hidden="true"><path d="M0 0l8 4.5L0 9z" /></svg>
+      {durationMs ? duration(durationMs) : null}
+    </span>
+  );
+}

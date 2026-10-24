@@ -11,7 +11,7 @@ export const PURGE_AFTER_DAYS = 30;
  * Housekeeping, run hourly:
  * - expired sessions, magic links, unlocks and old PIN attempts
  * - uploads that were never processed (older than a day)
- * - photos, inbox items, books, households and people soft-deleted over 30 days ago, with their files
+ * - photos, videos, inbox items, books, households and people soft-deleted over 30 days ago, with their files
  */
 export async function runMaintenance(db: Db, storage: Storage, now = new Date()) {
   const dayAgo = new Date(now.getTime() - DAY);
@@ -30,7 +30,7 @@ export async function runMaintenance(db: Db, storage: Storage, now = new Date())
 
   // Photos: files first, then rows. A purged hero photo is detached from its title page.
   const photos = await db.select().from(s.photos).where(and(isNotNull(s.photos.deletedAt), lt(s.photos.deletedAt, purgeBefore)));
-  for (const p of photos) await removeKeys(storage, [p.objectKey, p.displayKey, p.thumbKey]);
+  for (const p of photos) await removeKeys(storage, [p.objectKey, p.displayKey, p.thumbKey, p.videoKey]);
   if (photos.length) {
     const ids = photos.map((p) => p.id);
     await db.update(s.pages).set({ heroPhotoId: null }).where(inArray(s.pages.heroPhotoId, ids));
@@ -39,7 +39,7 @@ export async function runMaintenance(db: Db, storage: Storage, now = new Date())
   report.photos = photos.length;
 
   const items = await db.select().from(s.inboxItems).where(and(isNotNull(s.inboxItems.deletedAt), lt(s.inboxItems.deletedAt, purgeBefore)));
-  for (const it of items) await removeKeys(storage, [it.objectKey, it.displayKey, it.thumbKey]);
+  for (const it of items) await removeKeys(storage, [it.objectKey, it.displayKey, it.thumbKey, it.videoKey]);
   if (items.length) await db.delete(s.inboxItems).where(inArray(s.inboxItems.id, items.map((i) => i.id)));
   report.inboxItems = items.length;
 

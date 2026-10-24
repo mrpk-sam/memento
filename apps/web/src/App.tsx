@@ -24,7 +24,7 @@ function RequireAuth() {
 function Unavailable({ message, retry, busy }: { message: string; retry: () => void; busy: boolean }) {
   return (
     <section style={{ minHeight: 'calc(100dvh - 68px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, background: 'var(--wall)', textAlign: 'center' }}>
-      <div style={{ font: '400 26px/1.2 var(--font-serif)' }}>Memento can't load right now</div>
+      <div style={{ font: '400 26px/1.2 var(--font-display)' }}>Memento can't load right now</div>
       <div style={{ font: '400 15px/1.5 var(--font-ui)', color: 'var(--ink2)', maxWidth: 420 }}>{message}</div>
       <button
         onClick={retry}

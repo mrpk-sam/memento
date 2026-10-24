@@ -49,7 +49,7 @@ function heicPixels(buf: Buffer) {
 }
 
 /** Runs at most `n` tasks at once. The rest wait in order. */
-function limiter(n: number) {
+export function limiter(n: number) {
   let active = 0;
   const waiting: (() => void)[] = [];
   return async <T>(task: () => Promise<T>): Promise<T> => {
@@ -68,6 +68,16 @@ function limiter(n: number) {
 
 // Each job holds a full decode in memory, so only two run at a time.
 const queue = limiter(2);
+
+/** True when sharp (or the HEIC converter) can read the file as one of the photo formats. Reads the header only. */
+export async function isImage(buf: Buffer) {
+  if (isHeic(buf)) return true;
+  try {
+    return FORMATS.has((await sharp(buf).metadata()).format ?? '');
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Normalises an upload into three JPEGs: the original size, 1600px and 400px.
