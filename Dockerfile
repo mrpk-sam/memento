@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1
-FROM node:24-slim AS base
+# Pinned to a patched release (Node security release, 21 Oct 2026). Dependabot proposes newer ones.
+FROM node:24.22.1-slim AS base
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH
 RUN corepack enable
 WORKDIR /repo
@@ -15,10 +16,11 @@ RUN pnpm --filter @memento/web build && pnpm --filter @memento/api build
 # Production node_modules for the API only (shared is bundled into dist).
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm --filter @memento/api deploy --prod --legacy /out
 
-FROM node:24-slim AS runtime
+FROM node:24.22.1-slim AS runtime
 ENV NODE_ENV=production PORT=3000
-# ffmpeg converts uploaded videos to MP4 and grabs their poster frames.
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+# ffmpeg converts uploaded videos to MP4 and grabs their poster frames. It parses untrusted files,
+# so Debian security updates newer than the base image are applied too.
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /out/node_modules ./node_modules
 COPY --from=build /out/package.json ./package.json
