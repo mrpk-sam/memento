@@ -117,6 +117,12 @@ export async function accessRoutes(app: FastifyInstance) {
     deskUser(req);
     const [r] = await db.select().from(s.accessRequests).where(eq(s.accessRequests.id, req.params.id));
     if (!r || r.decision !== 'declined') throw notFound('That request cannot be reopened');
+    // Only one open request per email: if they asked again, the new one is already in the list.
+    const [again] = await db
+      .select({ id: s.accessRequests.id })
+      .from(s.accessRequests)
+      .where(and(sql`lower(${s.accessRequests.email}) = ${r.email.toLowerCase()}`, isNull(s.accessRequests.decidedAt)));
+    if (again) throw new HttpError(409, `${r.email} has asked again. Their new request is in the list.`);
     await db.update(s.accessRequests).set({ decidedAt: null, decision: null, decidedBy: null }).where(eq(s.accessRequests.id, r.id));
     return { ok: true };
   });

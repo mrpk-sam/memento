@@ -144,18 +144,20 @@ describe('deleting books', () => {
   it('removes a main book with its household and smaller books, and Undo restores everything', async () => {
     const lib = await library();
     const rivera = lib.books.find((b) => b.owner === 'Marco & Elena')!;
+    const elena = (await api(admin, 'GET', '/api/people')).json().people.find((p: { name: string }) => p.name === 'Elena');
+    expect((await api(admin, 'PATCH', `/api/people/${elena.id}`, { access: 'household_admin' })).statusCode).toBe(200);
     const res = await api(admin, 'DELETE', `/api/books/${rivera.id}`);
     expect(res.json().bookIds).toHaveLength(2);
     expect(res.json().memberIds).toHaveLength(2);
     const after = await library();
     expect(after.books.some((b) => b.householdId === rivera.householdId)).toBe(false);
     const people = (await api(admin, 'GET', '/api/people')).json().people;
-    expect(people.find((p: { name: string }) => p.name === 'Elena').householdId).toBeNull();
+    expect(people.find((p: { name: string }) => p.name === 'Elena')).toMatchObject({ householdId: null, access: 'member' });
 
     await api(admin, 'POST', '/api/books/restore', res.json());
     const back = await library();
     expect(back.books.filter((b) => b.householdId === rivera.householdId)).toHaveLength(2);
     const people2 = (await api(admin, 'GET', '/api/people')).json().people;
-    expect(people2.find((p: { name: string }) => p.name === 'Elena').householdId).toBe(rivera.householdId);
+    expect(people2.find((p: { name: string }) => p.name === 'Elena')).toMatchObject({ householdId: rivera.householdId, access: 'household_admin' });
   });
 });

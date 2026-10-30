@@ -226,7 +226,7 @@ export async function bookRoutes(app: FastifyInstance) {
     const now = new Date();
     if (book.kind === 'small') {
       await db.update(s.books).set({ deletedAt: now }).where(eq(s.books.id, book.id));
-      return { bookIds: [book.id], householdId: null, memberIds: [] };
+      return { bookIds: [book.id], householdId: null, memberIds: [], adminIds: [] };
     }
     return db.transaction(async (tx) => {
       const gone = await tx
@@ -235,25 +235,43 @@ export async function bookRoutes(app: FastifyInstance) {
         .where(and(eq(s.books.householdId, book.householdId), isNull(s.books.deletedAt)))
         .returning({ id: s.books.id });
       await tx.update(s.households).set({ deletedAt: now }).where(eq(s.households.id, book.householdId));
+      // Household admins become members (they have no household left). Undo needs to know who they were.
+      const admins = await tx
+        .select({ id: s.users.id })
+        .from(s.users)
+        .where(and(eq(s.users.householdId, book.householdId), eq(s.users.access, 'household_admin')));
       const moved = await tx
         .update(s.users)
         .set({ householdId: null, access: sql`case when ${s.users.access} = 'household_admin' then 'member'::access else ${s.users.access} end` })
         .where(eq(s.users.householdId, book.householdId))
         .returning({ id: s.users.id });
-      return { bookIds: gone.map((g) => g.id), householdId: book.householdId, memberIds: moved.map((m) => m.id) };
+      return { bookIds: gone.map((g) => g.id), householdId: book.householdId, memberIds: moved.map((m) => m.id), adminIds: admins.map((a) => a.id) };
     });
   });
 
   app.post('/api/books/restore', async (req) => {
     requireAdmin(req);
     const v = parse(
-      z.object({ bookIds: z.array(z.string().uuid()).min(1), householdId: z.string().uuid().nullable(), memberIds: z.array(z.string().uuid()) }),
+      z.object({
+        bookIds: z.array(z.string().uuid()).min(1),
+        householdId: z.string().uuid().nullable(),
+        memberIds: z.array(z.string().uuid()),
+        adminIds: z.array(z.string().uuid()).default([]),
+      }),
       req.body,
     );
     await db.transaction(async (tx) => {
       if (v.householdId) {
         await tx.update(s.households).set({ deletedAt: null }).where(eq(s.households.id, v.householdId));
         if (v.memberIds.length) await tx.update(s.users).set({ householdId: v.householdId }).where(inArray(s.users.id, v.memberIds));
+        // Only people still in this household and still members get their household admin role back.
+        const admins = v.adminIds.filter((id) => v.memberIds.includes(id));
+        if (admins.length) {
+          await tx
+            .update(s.users)
+            .set({ access: 'household_admin' })
+            .where(and(inArray(s.users.id, admins), eq(s.users.householdId, v.householdId), eq(s.users.access, 'member')));
+        }
       }
       await tx.update(s.books).set({ deletedAt: null }).where(inArray(s.books.id, v.bookIds));
     });

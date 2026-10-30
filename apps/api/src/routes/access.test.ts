@@ -75,6 +75,17 @@ describe('deciding', () => {
     expect((await open()).some((r) => r.id === req.id)).toBe(true);
   });
 
+  it("won't reopen a declined request when the same person has asked again", async () => {
+    await ask('twice@example.com', 'Twice');
+    const first = (await open()).find((r) => r.email === 'twice@example.com')!;
+    await api(admin, 'POST', `/api/access-requests/${first.id}/decline`);
+    await ask('Twice@example.com', 'Twice');
+    const res = await api(admin, 'POST', `/api/access-requests/${first.id}/reopen`);
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toMatch(/asked again/);
+    expect((await open()).filter((r) => r.email.toLowerCase() === 'twice@example.com')).toHaveLength(1);
+  });
+
   it('keeps members out and household admins to their own household', async () => {
     const ines = await t.login('ines@example.com');
     expect((await api(ines, 'GET', '/api/access-requests')).statusCode).toBe(403);
