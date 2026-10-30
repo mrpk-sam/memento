@@ -262,7 +262,7 @@ export function InboxTab() {
                         setItems((items) => items.filter((x) => x.id !== it.id));
                         try {
                           await api(`/inbox/${it.id}`, { method: 'DELETE' });
-                          toast('Photo discarded', 'Undo', async () => {
+                          toast(it.videoUrl ? 'Video discarded' : 'Photo discarded', 'Undo', async () => {
                             await api(`/inbox/${it.id}/restore`, { method: 'POST' });
                             await qc.invalidateQueries({ queryKey: qk.inbox });
                           });

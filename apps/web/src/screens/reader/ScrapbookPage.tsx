@@ -162,6 +162,19 @@ export const ScrapbookPage = memo(function ScrapbookPage({ page, scale, editMode
     e.stopPropagation();
     onJump?.(target);
   };
+  /** Contents and Chapters rows act as buttons for the keyboard and screen readers too. */
+  const jumpRow = (target: number, label: string) => ({
+    role: 'button',
+    tabIndex: 0,
+    'aria-label': label,
+    onClick: jump(target),
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      e.stopPropagation();
+      onJump?.(target);
+    },
+  });
 
   return (
     <div className={s.frame} data-page-idx={'idx' in p ? p.idx : undefined} style={{ background: isEnd ? '#F4ECDD' : th.paper }}>
@@ -265,7 +278,7 @@ export const ScrapbookPage = memo(function ScrapbookPage({ page, scale, editMode
               <div className={s.tapHint} style={{ color: muted }}>Tap a year to jump right in.</div>
               <div className={s.indexList}>
                 {entries.map((e) => (
-                  <div key={e.target} className={s.indexEntry} onClick={jump(e.target)}>
+                  <div key={e.target} className={s.indexEntry} {...jumpRow(e.target, `${e.kicker ?? ''} ${e.title}, ${e.pageLabel}`.trim())}>
                     <div className={s.thumbs}>
                       {(e.thumbs ?? []).map((t, i) => (
                         <div key={i} className={s.thumb} style={{ left: i * 30, top: [14, 0, 18][i % 3], transform: `rotate(${[-7, 3, 9][i % 3]}deg)` }}>
@@ -294,7 +307,7 @@ export const ScrapbookPage = memo(function ScrapbookPage({ page, scale, editMode
               <div className={s.bigTitle}>{'chaptersTitle' in p ? p.chaptersTitle : ''}</div>
               <div className={s.chList}>
                 {entries.map((e) => (
-                  <div key={e.target} className={s.chRow} onClick={jump(e.target)}>
+                  <div key={e.target} className={s.chRow} {...jumpRow(e.target, `${e.title}, ${e.pageLabel}`)}>
                     {e.flagImgs?.length ? (
                       <div style={{ position: 'relative', height: 40 }}>
                         {e.flagImgs.map((f, i) => (

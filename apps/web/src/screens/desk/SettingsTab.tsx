@@ -53,7 +53,11 @@ export function SettingsTab() {
               setFamily(e.target.value);
               if (e.target.value.trim()) save({ familyName: e.target.value.trim() });
             }}
-            onBlur={() => setFamily(null)}
+            onBlur={(e) => {
+              // An empty name isn't saved, so say so as the field goes back to the saved one.
+              if (!e.target.value.trim()) toast("The family name can't be empty, so it wasn't changed.");
+              setFamily(null);
+            }}
           />
         </div>
         <div className={s.row}>

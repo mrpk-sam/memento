@@ -68,13 +68,19 @@ export function AiTab() {
   const saveSettings = (patch: Partial<AiSettings> & { key?: string }, debounce = true) => {
     setA((cur) => cur && { ...cur, ...patch });
     const send = () =>
-      api<AiSettings>('/ai', { method: 'PATCH', body: patch }).then((v) => {
-        // The server drops the key when the endpoint moves to another host.
-        if (a.hasKey && !v.hasKey && patch.key === undefined) toast('New endpoint host, so the API key was removed. Paste the key again.');
-        setA((cur) => cur && { ...cur, keyMasked: v.keyMasked, hasKey: v.hasKey });
-      });
+      api<AiSettings>('/ai', { method: 'PATCH', body: patch })
+        .then((v) => {
+          // The server drops the key when the endpoint moves to another host.
+          if (a.hasKey && !v.hasKey && patch.key === undefined) toast('New endpoint host, so the API key was removed. Paste the key again.');
+          setA((cur) => cur && { ...cur, keyMasked: v.keyMasked, hasKey: v.hasKey });
+        })
+        .catch(async (e) => {
+          // A refused value (a bad URL, an empty prompt) doesn't stay in the field: show what's saved.
+          toast(errorMessage(e));
+          await reload();
+        });
     if (debounce) later(`settings:${Object.keys(patch).join()}`, send);
-    else send().catch((e) => toast(errorMessage(e)));
+    else void send();
   };
   const reload = async () => {
     const v = await api<AiSettings>('/ai');

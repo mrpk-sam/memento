@@ -233,6 +233,8 @@ const rows = (): [string, string, object | undefined, Record<Role, Expect>][] =>
   ['GET', '/api/ai/models', undefined, { anon: 401, member: 403, hhAdmin: 403, admin: 'ok' }],
 
   // Themes: admin only. Built-in themes can't be deleted.
+  ['PATCH', `/api/themes/${fx.theme}`, { name: 'Renamed', paper: '#FFFFFF', accent: '#000000', accent2: '#111111', motif: 'none' }, { anon: 401, member: 403, hhAdmin: 403, admin: 'ok' }],
+  ['PATCH', '/api/themes/cream', { paper: '#FFFFFF', accent: '#000000', accent2: '#111111', motif: 'none' }, { anon: 401, member: 403, hhAdmin: 403, admin: 403 }],
   ['DELETE', `/api/themes/${fx.theme}`, undefined, { anon: 401, member: 403, hhAdmin: 403, admin: 'ok' }],
   ['POST', `/api/themes/${fx.theme}/restore`, undefined, { anon: 401, member: 403, hhAdmin: 403, admin: 'ok' }],
   ['DELETE', '/api/themes/cream', undefined, { anon: 401, member: 403, hhAdmin: 403, admin: 403 }],

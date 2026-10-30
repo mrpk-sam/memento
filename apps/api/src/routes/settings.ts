@@ -25,20 +25,21 @@ export async function settingsRoutes(app: FastifyInstance) {
     return Object.fromEntries(rows.map((r) => [r.themeId, r.n]));
   });
 
+  const ThemeBody = z.object({
+    name: z.string().trim().max(60).default(''),
+    paper: HexColor,
+    accent: HexColor,
+    accent2: HexColor,
+    motif: z.enum(MOTIFS),
+    stickerPack: z.string().refine((k) => k in STICKER_PACKS, 'Unknown sticker pack').default('none'),
+  });
+  /** Bunting flags for a builder theme: its two colours around a paper-coloured stripe. */
+  const flagsOf = (v: z.infer<typeof ThemeBody>) => [v.accent, v.paper.toUpperCase() === '#FFFFFF' ? '#F3ECE2' : '#FFFFFF', v.accent2];
+
   /** Saves a theme from the builder. Ink and bunting flags follow the prototype's builder. */
   app.post('/api/themes', async (req) => {
     requireAdmin(req);
-    const v = parse(
-      z.object({
-        name: z.string().trim().max(60).default(''),
-        paper: HexColor,
-        accent: HexColor,
-        accent2: HexColor,
-        motif: z.enum(MOTIFS),
-        stickerPack: z.string().refine((k) => k in STICKER_PACKS, 'Unknown sticker pack').default('none'),
-      }),
-      req.body,
-    );
+    const v = parse(ThemeBody, req.body);
     const [{ m }] = (await db.select({ m: max(s.themes.sortOrder) }).from(s.themes)) as [{ m: number | null }];
     const id = `custom-${randomUUID()}`;
     await db.insert(s.themes).values({
@@ -49,12 +50,26 @@ export async function settingsRoutes(app: FastifyInstance) {
       accent: v.accent,
       accent2: v.accent2,
       motif: v.motif,
-      flags: [v.accent, v.paper.toUpperCase() === '#FFFFFF' ? '#F3ECE2' : '#FFFFFF', v.accent2],
+      flags: flagsOf(v),
       stickerPack: v.stickerPack,
       builtin: false,
       sortOrder: (m ?? 0) + 1,
     });
     return { id };
+  });
+
+  /** Edits a custom theme from the builder. Built-in themes stay as they are. */
+  app.patch<{ Params: { id: string } }>('/api/themes/:id', async (req) => {
+    requireAdmin(req);
+    const v = parse(ThemeBody, req.body);
+    const [t] = await db.select().from(s.themes).where(and(eq(s.themes.id, req.params.id), isNull(s.themes.deletedAt)));
+    if (!t) throw notFound('That theme no longer exists');
+    if (t.builtin) throw forbidden("Built-in themes can't be changed. Make your own in the builder.");
+    await db
+      .update(s.themes)
+      .set({ name: v.name || 'Custom theme', paper: v.paper, accent: v.accent, accent2: v.accent2, motif: v.motif, flags: flagsOf(v), stickerPack: v.stickerPack })
+      .where(eq(s.themes.id, t.id));
+    return { id: t.id };
   });
 
   /** Custom themes can be removed once no page uses them. */

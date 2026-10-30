@@ -24,7 +24,8 @@ export function Header() {
 
   return (
     <header className={s.header} style={{ gap: vw < 600 ? 12 : 28, padding: `0 ${vw < 760 ? 16 : 36}px` }}>
-      <button className={s.brand} onClick={() => nav('/')}>
+      {/* On the sign-in page the logo stays put, so a link the person came in on (?next=) isn't lost. */}
+      <button className={s.brand} onClick={() => loc.pathname !== '/login' && nav('/')}>
         <span className={s.mark}>
           <span style={{ height: 24, background: 'var(--accent)' }} />
           <span style={{ height: 20, background: 'var(--tan)' }} />
@@ -74,7 +75,7 @@ function AvatarMenu({ initials, color, title }: { initials: string; color: strin
   }, [open]);
   return (
     <div ref={ref} className={s.avWrap}>
-      <button className={s.avatar} style={{ background: color }} title={title} onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open}>
+      <button className={s.avatar} style={{ background: color }} title={title} aria-label={`Account: ${title}`} onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open}>
         {initials}
       </button>
       {open && (

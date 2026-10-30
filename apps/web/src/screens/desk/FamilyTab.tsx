@@ -45,14 +45,17 @@ export function FamilyTab() {
   const refresh = () => qc.invalidateQueries({ queryKey: qk.people });
 
   /** Runs a request, refreshes the list, and turns failures into a toast. */
+  /** Runs a change and reloads the list. Resolves to whether it worked, so a field can put back what it had. */
   async function run(fn: () => Promise<unknown>, ok?: () => void) {
     try {
       await fn();
       await refresh();
       ok?.();
+      return true;
     } catch (e) {
       toast(errorMessage(e));
       await refresh();
+      return false;
     }
   }
 
@@ -260,7 +263,7 @@ export function FamilyTab() {
                     )
                   }
                   onPatch={(body, okMsg) => run(() => patch(m.id, body), okMsg ? () => toast(okMsg) : undefined)}
-                  onResend={() => run(() => api(`/people/${m.id}/invite`, { method: 'POST' }), () => toast(`New invite link sent to ${m.email}`))}
+                  onResend={() => run(() => api(`/people/${m.id}/invite`, { method: 'POST' }), () => toast(m.invite ? `New invite link sent to ${m.email}` : `Invite sent to ${m.email}`))}
                   onCancelInvite={() =>
                     run(
                       () => api(`/people/${m.id}/invite/cancel`, { method: 'POST' }),
@@ -296,7 +299,7 @@ interface RowProps {
   onAskDelete: () => void;
   onCancelDelete: () => void;
   onDelete: () => void;
-  onPatch: (body: Partial<PersonRow>, okMsg?: string) => Promise<void>;
+  onPatch: (body: Partial<PersonRow>, okMsg?: string) => Promise<boolean>;
   onResend: () => void;
   onCancelInvite: () => void;
   onAccept: () => void;
@@ -329,6 +332,11 @@ function MemberRow(p: RowProps) {
         <div style={{ gridArea: 'nm', minWidth: 0 }}>
           <div className={s.name}>{m.name}</div>
           <div className={s.role}>{m.roleLabel}</div>
+          {!pending && !ro && m.email && !m.isSuperAdmin && !p.isSelf && (
+            <button className={s.linkBtn} style={{ paddingLeft: 0 }} onClick={p.onResend}>
+              Send invite
+            </button>
+          )}
           {pending && (
             <div className={s.pendingRow}>
               <span
@@ -375,7 +383,8 @@ function MemberRow(p: RowProps) {
           const v = e.target.value.trim();
           if (v === emailWas) return;
           if (v && !isEmail(v)) return p.toast('That email looks incomplete');
-          void p.onPatch({ email: v }, v ? `${m.name}'s email updated` : undefined);
+          // A refused change (say, an email someone else has) puts the old one back in the field.
+          void p.onPatch({ email: v }, v ? `${m.name}'s email updated` : undefined).then((ok) => !ok && setEmail(emailWas));
         }}
       />
 
@@ -418,11 +427,11 @@ function MemberRow(p: RowProps) {
         <div className={s.actions}>
           {!ro && (
             <>
-              <button className={d.iconBtn} title="Edit" onClick={p.onEdit}>
+              <button className={d.iconBtn} title="Edit" aria-label={`Edit ${m.name}`} onClick={p.onEdit}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
               </button>
               {!p.isSelf && !m.isSuperAdmin && (
-                <button className={`${d.iconBtn} ${d.iconBtnDanger}`} title="Delete" onClick={p.onAskDelete}>
+                <button className={`${d.iconBtn} ${d.iconBtnDanger}`} title="Delete" aria-label={`Delete ${m.name}`} onClick={p.onAskDelete}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /></svg>
                 </button>
               )}
