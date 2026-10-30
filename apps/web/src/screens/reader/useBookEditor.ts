@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { MONTHS, chapterList, moveToChapter as placeChapter, movePhoto as placeMove, placeOnSpread, setMonth as placeMonth } from '@memento/shared';
+import { MONTHS, chapterList, moveManyToChapter, movePhoto as placeMove, placeOnSpread, setMonth as placeMonth } from '@memento/shared';
 import { ApiError, api, errorMessage } from '../../api/client';
 import { qk } from '../../api/hooks';
 import type { BookContent, PageDto, PhotoDto } from '../../api/types';
@@ -222,21 +222,25 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
       }
     },
 
-    /** Moves a photo into another chapter (by the chapter's left page index). Shows at once, with Undo. */
-    async moveToChapter(photoId: string, chapterIdx: number) {
+    /**
+     * Moves photos into a chapter (by its left page index), all or none. A full month grows extra
+     * pages on the server, so the instant preview only shows what already fits. Returns true once saved.
+     */
+    async moveToChapter(photoIds: string[], chapterIdx: number) {
       const c = get();
       const target = c?.pages[chapterIdx];
-      if (!c || !target) return;
+      if (!c || !target || !photoIds.length) return false;
       const name = chapterList(c.pages).find((x) => x.idx === chapterIdx)?.name ?? 'that chapter';
-      const local = placeChapter(c.pages, photoId, chapterIdx);
-      if (local.kind === 'full') return toast(`${name} is full. Remove a photo there first.`);
-      if (local.kind !== 'moved') return;
-      setPages(() => local.pages as PageDto[]);
-      const res = await save(() => api<BookContent & { before?: LayoutEntry[] }>(`/photos/${photoId}/chapter`, { body: { pageId: target.id } }));
-      if (!res) return;
+      const local = moveManyToChapter(c.pages, photoIds, chapterIdx);
+      if (local.kind === 'same') return false;
+      if (local.kind === 'moved') setPages(() => local.pages as PageDto[]);
+      const res = await save(() => api<BookContent & { moved: number; before?: LayoutEntry[] }>(`/books/${bookId}/chapter-moves`, { body: { photoIds, pageId: target.id } }));
+      if (!res) return false;
       setContent(res);
       const before = res.before;
-      if (before) toast(`Moved to ${name}`, 'Undo', () => void save(async () => setContent(await api<BookContent>(`/books/${bookId}/layout`, { method: 'PUT', body: { photos: before } }))));
+      const what = res.moved === 1 ? 'Photo' : `${res.moved} photos`;
+      if (before) toast(`${what} moved to ${name}`, 'Undo', () => void save(async () => setContent(await api<BookContent>(`/books/${bookId}/layout`, { method: 'PUT', body: { photos: before } }))));
+      return true;
     },
 
     async removePhoto(photoId: string) {

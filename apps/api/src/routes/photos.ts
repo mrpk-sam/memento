@@ -2,7 +2,7 @@ import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { and, eq, gt, inArray, isNull } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { LIMITS, Month, PageHeader, STICKER_PACKS, canEditBook, moveToChapter, movePhoto, placeOnSpread, setMonth, type ModelPhoto } from '@memento/shared';
+import { LIMITS, MONTH_CAPACITY, Month, PageHeader, STICKER_PACKS, canEditBook, chapterList, chapterRoom, chapterSpan, chapterStart, moveManyToChapter, movePhoto, placeOnSpread, setMonth, type ModelPhoto } from '@memento/shared';
 import type { Db } from '../db/client.js';
 import * as s from '../db/schema.js';
 import { loadPages, type PageDto } from '../lib/content.js';
@@ -12,7 +12,7 @@ import { photoKey, photoVideoKey } from '../lib/s3.js';
 import { requireUser, type SessionUser } from '../lib/session.js';
 import { MAX_OPEN_UPLOADS, isAllowedType, maxBytesFor, noteIssued, openUploads, readUpload, uploadError, uploadKey } from '../lib/uploads.js';
 import { processMedia, type Media } from '../lib/videos.js';
-import { loadBookContent, requireEdit } from './content.js';
+import { growChapter, loadBookContent, requireEdit } from './content.js';
 
 const MAX_FILES = 20;
 const UploadRef = z.object({ id: z.string().uuid(), name: z.string().max(255).default('') });
@@ -124,7 +124,13 @@ export async function photoRoutes(app: FastifyInstance) {
       z.object({ uploads: z.array(UploadRef).min(1).max(MAX_FILES), L: z.number().int().min(0), single: z.boolean(), side: z.enum(['L', 'R']).optional() }),
       req.body,
     );
-    const pages = await loadPages(db, book.id);
+    let pages = await loadPages(db, book.id);
+    // A month chapter grows extra pages to take the upload, up to its limit of 50.
+    const start = chapterStart(pages, v.L);
+    if (start != null && pages[start]!.layout === 'monthL') {
+      const adding = Math.min(v.uploads.length, chapterRoom(pages, start));
+      if (adding > 0) pages = (await growChapter(db, book.id, pages, start, adding)) ?? pages;
+    }
     // Check for room before doing any image work.
     const probe = placeOnSpread(pages, v.L, v, v.uploads.map((u) => ({ id: u.id, month: null })));
     if (probe.kind === 'no-slots') throw badRequest('This spread has no photo slots. Turn to a year or month first.');
@@ -261,21 +267,37 @@ export async function photoRoutes(app: FastifyInstance) {
     return { kind: r.kind, before, ...(await loadBookContent(db, user, p.bookId)) };
   });
 
-  /** Moves a photo into another chapter of its book (a year or a month chapter, by its left page). */
-  app.post<{ Params: { id: string } }>('/api/photos/:id/chapter', async (req) => {
-    const { user, p } = await photoForEdit(req, req.params.id);
-    const { pageId } = parse(z.object({ pageId: z.string().uuid() }), req.body);
-    const pages = await loadPages(db, p.bookId);
-    const r = moveToChapter(pages, p.id, pages.findIndex((pg) => pg.id === pageId));
+  /**
+   * Moves photos into a chapter of their book: a year or a month, named by its left page.
+   * A month grows extra pages to take them, up to 50. All or nothing.
+   */
+  app.post<{ Params: { id: string } }>('/api/books/:id/chapter-moves', async (req) => {
+    const user = requireUser(req);
+    const book = await requireEdit(db, user, req.params.id);
+    const v = parse(z.object({ photoIds: z.array(z.string().uuid()).min(1).max(MONTH_CAPACITY), pageId: z.string().uuid() }), req.body);
+    const ids = [...new Set(v.photoIds)];
+    let pages = await loadPages(db, book.id);
+    const start = pages.findIndex((pg) => pg.id === v.pageId);
+    if (pages[start]?.layout !== 'summaryL' && pages[start]?.layout !== 'monthL') throw badRequest("That isn't a chapter in this book");
+    const pageOf = new Map(pages.flatMap((pg, i) => pg.photos.map((p) => [p.id, i] as const)));
+    if (ids.some((id) => !pageOf.has(id))) throw badRequest('Some of those photos are not in this book');
+    const span = chapterSpan(pages, start);
+    const adding = ids.filter((id) => !span.includes(pageOf.get(id)!)).length;
+    const name = chapterList(pages).find((c) => c.idx === start)?.name ?? 'That chapter';
+    const full = () => badRequest(`${name} has room for ${chapterRoom(pages, start)} more photo${chapterRoom(pages, start) === 1 ? '' : 's'}.`);
+    const grown = await growChapter(db, book.id, pages, start, adding);
+    if (!grown) throw full();
+    pages = grown;
+    const r = moveManyToChapter(pages, ids, start);
     if (r.kind === 'invalid') throw badRequest("That isn't a chapter in this book");
-    if (r.kind === 'full') throw badRequest('That chapter is full. Remove a photo there first.');
-    if (r.kind === 'same') return { kind: r.kind, ...(await loadBookContent(db, user, p.bookId)) };
+    if (r.kind === 'full') throw full();
+    if (r.kind === 'same') return { kind: r.kind, moved: 0, ...(await loadBookContent(db, user, book.id)) };
     const before = snapshot(pages, r.pages);
     await db.transaction(async (tx) => {
-      await persistLayout(tx as unknown as Db, p.bookId, r.pages);
-      await tx.update(s.books).set({ updatedAt: new Date() }).where(eq(s.books.id, p.bookId));
+      await persistLayout(tx as unknown as Db, book.id, r.pages);
+      await tx.update(s.books).set({ updatedAt: new Date() }).where(eq(s.books.id, book.id));
     });
-    return { kind: r.kind, before, ...(await loadBookContent(db, user, p.bookId)) };
+    return { kind: r.kind, moved: r.moved, before, ...(await loadBookContent(db, user, book.id)) };
   });
 
   app.delete<{ Params: { id: string } }>('/api/photos/:id', async (req) => {

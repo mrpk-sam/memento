@@ -1,10 +1,10 @@
 import { and, asc, eq, gte, isNull, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { bookName, bookOwnerName, canEditBook, familyOf, hasMonthChapter, monthChapterPages, monthInsertAt, nextYear, yearBlockPages, yearInsertAt } from '@memento/shared';
+import { bookName, bookOwnerName, canEditBook, chapterSpan, familyOf, hasMonthChapter, monthChapterPages, monthInsertAt, monthMorePages, nextYear, spreadsToAdd, yearBlockPages, yearInsertAt } from '@memento/shared';
 import type { Db } from '../db/client.js';
 import * as s from '../db/schema.js';
-import { loadPages } from '../lib/content.js';
+import { loadPages, type PageDto } from '../lib/content.js';
 import { HttpError, badRequest, forbidden, notFound, parse } from '../lib/http.js';
 import { requireUser, type SessionUser } from '../lib/session.js';
 import { hasUnlock } from './books.js';
@@ -72,6 +72,20 @@ export async function contentRoutes(app: FastifyInstance) {
     await insertPagesAt(db, req.params.id, at, monthChapterPages(year, month));
     return { at };
   });
+}
+
+/**
+ * Adds the extra spreads a month chapter (starting at page `start`) needs before `adding` more
+ * photos fit, and returns the book's pages after. Null if that would pass the chapter's limit.
+ * Empty extra spreads are removed later by runMaintenance, so Undo can still put photos back.
+ */
+export async function growChapter(db: Db, bookId: string, pages: PageDto[], start: number, adding: number): Promise<PageDto[] | null> {
+  const n = spreadsToAdd(pages, start, adding);
+  if (n == null) return null;
+  if (!n) return pages;
+  const at = start + chapterSpan(pages, start).length;
+  await insertPagesAt(db, bookId, at, Array.from({ length: n }, () => monthMorePages(pages[start]!)).flat());
+  return loadPages(db, bookId);
 }
 
 /** Shifts later pages down and inserts new ones at `at`, in one transaction. */

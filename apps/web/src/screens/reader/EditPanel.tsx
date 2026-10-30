@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { MONTHS, STICKER_PACKS, capacity, chapterList, chapters, hasMonthChapter, nextYear, poss, stepTarget, yearSpread } from '@memento/shared';
+import { MONTHS, MONTH_CAPACITY, STICKER_PACKS, capacity, chapterList, chapterSpan, chapterStart, chapters, hasMonthChapter, nextYear, poss, stepTarget, yearSpread } from '@memento/shared';
 import type { BookContent, Theme } from '../../api/types';
 import { SizeControls, TexturePicker } from '../../components/CoverControls';
 import { MEDIA_ACCEPT } from '../../lib/upload';
@@ -55,8 +55,11 @@ export function EditPanel({ content, themes, L, single, goTo, selPhoto, setSelPh
   const mainTheme = themeOf(themes, main.themeId);
   const spreadLabel = main.type === 'month' ? `${main.label} · ${mainTheme.name}` : main.label || TYPE_LABEL[main.type] || 'Spread';
   const hasSlots = pgs.some((p) => capacity(p) > 0);
-  const used = pgs.reduce((a, p) => a + p.photos.length, 0);
-  const cap = pgs.reduce((a, p) => a + capacity(p), 0);
+  // A month chapter grows extra pages up to 50 photos, so its count covers the whole month.
+  const chStart = chapterStart(pages, L);
+  const inMonth = chStart != null && pages[chStart]?.layout === 'monthL';
+  const used = inMonth ? chapterSpan(pages, chStart).reduce((a, i) => a + (pages[i]?.photos.length ?? 0), 0) : pgs.reduce((a, p) => a + p.photos.length, 0);
+  const cap = inMonth ? MONTH_CAPACITY : pgs.reduce((a, p) => a + capacity(p), 0);
   const packId = (pgs.find((p) => capacity(p) > 0) ?? main).stickerPack || 'none';
   const headerPage = pgs.find((p) => p.header);
   const journalPage = pgs.find((p) => p.layout === 'monthR');
@@ -67,8 +70,20 @@ export function EditPanel({ content, themes, L, single, goTo, selPhoto, setSelPh
   const yearInView = pgs.find((p) => p.year != null)?.year ?? (ch.years.length ? ch.years[ch.years.length - 1]!.year : null);
   const freeMonths = yearInView == null ? [] : MONTHS.map((m, k) => ({ m, k })).filter(({ k }) => !hasMonthChapter(pages, yearInView, k));
   const [newMonth, setNewMonth] = useState<number | ''>('');
-  // Every year and month chapter, for each photo's "Chapter" menu.
+  // Every year and month chapter, for each photo's "Chapter" menu and the bulk move.
   const chapterOpts = chapterList(pages);
+  // Photos ticked for a bulk move. The selection stays while turning pages, so it can span spreads.
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const allIds = new Set(pages.flatMap((pg) => pg.photos.map((p) => p.id)));
+  const pickedIds = [...picked].filter((id) => allIds.has(id));
+  const spreadIds = idxs.flatMap((i) => (pages[i]?.photos ?? []).map((p) => p.id)).filter((id) => !id.startsWith('tmp-'));
+  const allPicked = spreadIds.length > 0 && spreadIds.every((id) => picked.has(id));
+  const togglePick = (id: string) =>
+    setPicked((cur) => {
+      const next = new Set(cur);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
 
   const field = (key: string, label: string, def: string) => ({ key, label, def, value: tx[key] ?? '' });
   const openGroups = [
@@ -175,7 +190,7 @@ export function EditPanel({ content, themes, L, single, goTo, selPhoto, setSelPh
         <div className={s.group}>
           <div className={s.slotsHead}>
             <label className={s.label}>Add photos to this spread</label>
-            <span className={s.hint}>{used} of {cap} slots used</span>
+            <span className={s.hint}>{used} of {cap} {inMonth ? 'photos in this month' : 'slots used'}</span>
           </div>
           <div
             className={s.drop}
@@ -304,6 +319,19 @@ export function EditPanel({ content, themes, L, single, goTo, selPhoto, setSelPh
         <div className={s.group} style={{ gap: 12 }}>
           <div className={s.slotsHead}>
             <label className={s.label}>Photos &amp; captions</label>
+            <button
+              className={s.selectAll}
+              disabled={!spreadIds.length}
+              onClick={() =>
+                setPicked((cur) => {
+                  const next = new Set(cur);
+                  spreadIds.forEach((id) => (allPicked ? next.delete(id) : next.add(id)));
+                  return next;
+                })
+              }
+            >
+              {allPicked ? 'Unselect these' : 'Select all'}
+            </button>
             {(() => {
               const ids = idxs.flatMap((i) => (pages[i]?.photos ?? []).map((p) => p.id)).filter((id) => !id.startsWith('tmp-'));
               const busyNow = ids.some((id) => editor.loading.has(id));
@@ -328,7 +356,17 @@ export function EditPanel({ content, themes, L, single, goTo, selPhoto, setSelPh
                   onClick={() => setSelPhoto(p.id)}
                   style={{ borderColor: sel ? 'var(--accent)' : 'var(--line)', boxShadow: sel ? '0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent)' : 'none' }}
                 >
-                  <div className={s.thumb} style={{ background: p.thumbUrl ? `url(${p.thumbUrl}) center/cover` : `repeating-linear-gradient(135deg, rgba(255,255,255,.25) 0 6px, transparent 6px 12px), oklch(0.84 0.055 ${hueOf(p.id)})` }} />
+                  <div className={s.thumb} style={{ background: p.thumbUrl ? `url(${p.thumbUrl}) center/cover` : `repeating-linear-gradient(135deg, rgba(255,255,255,.25) 0 6px, transparent 6px 12px), oklch(0.84 0.055 ${hueOf(p.id)})` }}>
+                    <input
+                      type="checkbox"
+                      className={s.pick}
+                      aria-label={`Select ${p.subject || 'this photo'}`}
+                      checked={picked.has(p.id)}
+                      disabled={p.id.startsWith('tmp-')}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={() => togglePick(p.id)}
+                    />
+                  </div>
                   <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <div className={s.photoMeta}>
                       <span>{p.subject}</span>
@@ -339,11 +377,11 @@ export function EditPanel({ content, themes, L, single, goTo, selPhoto, setSelPh
                         Chapter
                         <select
                           aria-label="Chapter for this photo"
-                          value={String(pages[i]?.layout === 'summaryR' || pages[i]?.layout === 'monthR' ? i - 1 : i)}
+                          value={String(chapterStart(pages, i) ?? i)}
                           disabled={p.id.startsWith('tmp-')}
                           onChange={(e) => {
                             e.stopPropagation();
-                            void editor.moveToChapter(p.id, +e.target.value);
+                            void editor.moveToChapter([p.id], +e.target.value);
                           }}
                         >
                           {chapterOpts.map((c) => (
@@ -408,6 +446,30 @@ export function EditPanel({ content, themes, L, single, goTo, selPhoto, setSelPh
               );
             }),
           )}
+        </div>
+      )}
+
+      {pickedIds.length > 0 && (
+        <div className={s.bulk} role="region" aria-label="Selected photos">
+          <span className={s.bulkCount}>{pickedIds.length} selected</span>
+          <select
+            aria-label="Move selected photos to"
+            value=""
+            onChange={(e) => {
+              const to = +e.target.value;
+              void editor.moveToChapter(pickedIds, to).then((ok) => ok && setPicked(new Set()));
+            }}
+          >
+            <option value="" disabled>
+              Move to…
+            </option>
+            {chapterOpts.map((c) => (
+              <option key={c.key} value={c.idx}>{c.name}</option>
+            ))}
+          </select>
+          <button className={s.bulkClear} onClick={() => setPicked(new Set())}>
+            Clear
+          </button>
         </div>
       )}
     </aside>

@@ -11,6 +11,7 @@ import { inboxKey, inboxVideoKey, photoKey, photoVideoKey } from '../lib/s3.js';
 import { requireAdmin } from '../lib/session.js';
 import { readUpload, uploadError, uploadKey } from '../lib/uploads.js';
 import { processMedia } from '../lib/videos.js';
+import { growChapter } from './content.js';
 import { persistLayout } from './photos.js';
 
 type Item = typeof s.inboxItems.$inferSelect;
@@ -109,7 +110,7 @@ export async function inboxRoutes(app: FastifyInstance) {
     return dto(res[0]!);
   });
 
-  /** Files an inbox photo into a chapter: right page first, then left. */
+  /** Files an inbox photo into a chapter: right page first, then left, then extra pages (a full month grows one). */
   app.post<{ Params: { id: string } }>('/api/inbox/:id/file', async (req) => {
     requireAdmin(req);
     const [it] = await db.select().from(s.inboxItems).where(and(eq(s.inboxItems.id, req.params.id), isNull(s.inboxItems.deletedAt)));
@@ -117,10 +118,11 @@ export async function inboxRoutes(app: FastifyInstance) {
     if (!it.destBookId || !it.destPageId) throw badRequest('Pick a book and a chapter first');
     const [book] = await db.select().from(s.books).where(and(eq(s.books.id, it.destBookId), isNull(s.books.deletedAt)));
     if (!book) throw badRequest('That book no longer exists');
-    const pages = await loadPages(db, book.id);
+    let pages = await loadPages(db, book.id);
     const idx = pages.findIndex((p) => p.id === it.destPageId);
     const ch = chapterList(pages).find((c) => c.idx === idx);
     if (idx < 0 || !ch) throw badRequest('That chapter no longer exists. Pick another one.');
+    if (pages[idx]!.layout === 'monthL') pages = (await growChapter(db, book.id, pages, idx, 1)) ?? pages;
     const photoId = randomUUID();
     const r = fileToChapter(pages, idx, { id: photoId, month: null });
     if (!r.placed.length) throw badRequest(`${ch.name} is full in that book. Pick another chapter.`);

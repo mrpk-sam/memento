@@ -3,6 +3,8 @@ import sharp from 'sharp';
 import { LIMITS } from '@memento/shared';
 import { ADMIN, createTestApp } from '../test/app.js';
 import { makeClip } from '../test/video.js';
+import * as s from '../db/schema.js';
+import { runMaintenance } from '../lib/maintenance.js';
 
 let t: Awaited<ReturnType<typeof createTestApp>>;
 let admin: string;
@@ -10,7 +12,7 @@ let member: string;
 let bookId: string;
 let jpeg: Buffer;
 
-type Content = { pages: { id: string; type: string; layout: string | null; photos: { id: string; month: number | null; subject: string; caption: string; thumbUrl: string }[]; hero: { id: string } | null }[] };
+type Content = { pages: { id: string; type: string; layout: string | null; position: number; header: { title?: string } | null; photos: { id: string; month: number | null; subject: string; caption: string; thumbUrl: string }[]; hero: { id: string } | null }[] };
 const api = (cookie: string, method: string, url: string, payload?: object) => t.app.inject({ method: method as 'GET', url, headers: { cookie }, payload });
 const content = async () => (await api(admin, 'GET', `/api/books/${bookId}`)).json() as Content;
 
@@ -236,21 +238,66 @@ describe('editing photos', () => {
 });
 
 describe('moving photos between chapters', () => {
-  it('moves a year photo into a month chapter with that month, refuses non-chapters, and Undo puts it back', async () => {
+  const pageIds = async () => (await content()).pages.map((p) => p.id);
+  /** Puts `n` stored photo rows straight onto a page (faster than uploading). */
+  const fill = async (pageId: string, n: number) => {
+    const rows = Array.from({ length: n }, (_, i) => ({ bookId, pageId, position: i, objectKey: 'x', thumbKey: 'x', displayKey: 'x', subject: `fill ${i}` }));
+    if (n) await t.db.insert(s.photos).values(rows);
+  };
+
+  it('moves year photos into a month chapter with that month, refuses non-chapters, and Undo puts them back', async () => {
     expect((await api(admin, 'POST', `/api/books/${bookId}/months`, { year: 2026, month: 5 })).statusCode).toBe(200);
     const c = await content();
     const june = c.pages.findIndex((p) => p.layout === 'monthL');
     const before = c.pages.flatMap((p) => p.photos.map((ph) => [ph.id, p.id, ph.month]));
-    const photo = c.pages[4]!.photos[0]!;
-    const res = await api(admin, 'POST', `/api/photos/${photo.id}/chapter`, { pageId: c.pages[june]!.id });
-    expect(res.json().kind).toBe('moved');
+    const [a, b] = c.pages[4]!.photos;
+    const res = await api(admin, 'POST', `/api/books/${bookId}/chapter-moves`, { photoIds: [a!.id, b!.id], pageId: c.pages[june]!.id });
+    expect(res.json()).toMatchObject({ kind: 'moved', moved: 2 });
     const after = (await content()).pages;
-    expect(after[4]!.photos.map((p) => p.id)).not.toContain(photo.id);
-    const moved = [...after[june]!.photos, ...after[june + 1]!.photos].find((p) => p.id === photo.id);
-    expect(moved?.month).toBe(5);
+    expect(after[4]!.photos.map((p) => p.id)).not.toContain(a!.id);
+    const there = [...after[june]!.photos, ...after[june + 1]!.photos];
+    expect(there.filter((p) => p.id === a!.id || p.id === b!.id).map((p) => p.month)).toEqual([5, 5]);
 
-    expect((await api(admin, 'POST', `/api/photos/${photo.id}/chapter`, { pageId: after[2]!.id })).statusCode).toBe(400);
+    expect((await api(admin, 'POST', `/api/books/${bookId}/chapter-moves`, { photoIds: [a!.id], pageId: after[2]!.id })).statusCode).toBe(400);
     await api(admin, 'PUT', `/api/books/${bookId}/layout`, { photos: res.json().before });
     expect((await content()).pages.flatMap((p) => p.photos.map((ph) => [ph.id, p.id, ph.month]))).toEqual(before);
+  });
+
+  it('grows a full month by a 9 + 9 spread, stops at 50, and cleanup drops the spread once it is empty', async () => {
+    expect((await api(admin, 'POST', `/api/books/${bookId}/months`, { year: 2026, month: 6 })).statusCode).toBe(200);
+    let c = await content();
+    const july = c.pages.findIndex((p) => p.layout === 'monthL' && p.header?.title === 'July');
+    await fill(c.pages[july]!.id, 6);
+    await fill(c.pages[july + 1]!.id, 8);
+    const pagesBefore = (await pageIds()).length;
+    const photo = (await content()).pages[4]!.photos[0]!;
+    const res = await api(admin, 'POST', `/api/books/${bookId}/chapter-moves`, { photoIds: [photo.id], pageId: c.pages[july]!.id });
+    expect(res.json()).toMatchObject({ kind: 'moved', moved: 1 });
+    c = await content();
+    expect(c.pages).toHaveLength(pagesBefore + 2);
+    expect([c.pages[july + 2]!.layout, c.pages[july + 3]!.layout]).toEqual(['monthMore', 'monthMore']);
+    expect(c.pages[july + 2]!.photos.map((p) => p.id)).toEqual([photo.id]);
+
+    // Fill July to exactly 50 (15 + 17 here, 18 more stored on its first page); one more is refused.
+    await fill(c.pages[july + 2]!.id, 8);
+    await fill(c.pages[july + 3]!.id, 9);
+    await fill(c.pages[july]!.id, 18);
+    c = await content();
+    expect(c.pages.slice(july, july + 4).reduce((n, p) => n + p.photos.length, 0)).toBe(50);
+    const add = await api(admin, 'POST', `/api/books/${bookId}/chapter-moves`, { photoIds: [c.pages[4]!.photos[0]!.id], pageId: c.pages[july]!.id });
+    expect(add.statusCode).toBe(400);
+    expect(add.json().error).toBe('July 2026 has room for 0 more photos.');
+
+    // Moving the photo back leaves the extra spread holding only the stored fill rows; delete those
+    // for good, and the hourly cleanup removes the now-empty spread and closes up the book.
+    await api(admin, 'PUT', `/api/books/${bookId}/layout`, { photos: res.json().before });
+    const extra = c.pages.slice(july + 2).filter((p) => p.layout === 'monthMore').map((p) => p.id);
+    const { inArray } = await import('drizzle-orm');
+    await t.db.delete(s.photos).where(inArray(s.photos.pageId, extra));
+    const report = await runMaintenance(t.db, t.storage);
+    expect(report.emptySpreads).toBe(extra.length / 2);
+    const end = await content();
+    expect(end.pages.some((p) => p.layout === 'monthMore')).toBe(false);
+    expect(end.pages.map((p) => p.position)).toEqual(end.pages.map((_, i) => i));
   });
 });

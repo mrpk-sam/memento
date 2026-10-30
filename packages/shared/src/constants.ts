@@ -47,8 +47,8 @@ export const STICKER_SPOTS = {
 
 export const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'] as const;
 
-/** Photo slots per page layout. */
-export const LAYOUT_CAPACITY = { summaryL: 6, summaryR: 9, monthL: 6, monthR: 8 } as const;
+/** Photo slots per page layout. monthMore is a month chapter's extra page, added as the month fills. */
+export const LAYOUT_CAPACITY = { summaryL: 6, summaryR: 9, monthL: 6, monthR: 8, monthMore: 9 } as const;
 
 export const PAGE_SIZE = { width: 600, height: 750 } as const;
 

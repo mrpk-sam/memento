@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { chapterList, monthInsertAt, nextYear, type ModelPage } from './bookModel.js';
-import { YEAR_CAPACITY, chapterIndex, fileToChapter, insertPhotos, moveToChapter, placeOnSpread, reflow, setMonth } from './placement.js';
+import { chapterList, chapterSpan, chapterStart, monthInsertAt, nextYear, type ModelPage } from './bookModel.js';
+import { MONTH_CAPACITY, YEAR_CAPACITY, chapterIndex, fileToChapter, insertPhotos, moveManyToChapter, moveToChapter, placeOnSpread, reflow, setMonth, spreadsToAdd } from './placement.js';
 
 type Ph = { id: string; month: number | null };
 const ph = (id: string, month: number | null = null): Ph => ({ id, month });
@@ -199,5 +199,62 @@ describe('chapters and filing', () => {
 
   it('adds the year after the latest one', () => {
     expect(nextYear(book())).toBe(2026);
+  });
+});
+
+/** The test book with `n` extra 9 + 9 spreads after July (pages 8 onwards), holding `more`. */
+function grown(n: number, jul: Ph[] = [], more: Ph[] = [], y24: Ph[] = []): ModelPage[] {
+  const pages = book(y24, jul);
+  const extra = Array.from({ length: n * 2 }, (_, k) => ({ id: `more${k}`, type: 'month', layout: 'monthMore', year: 2024, photos: more.slice(k * 9, k * 9 + 9) }));
+  return [...pages.slice(0, 8), ...extra, ...pages.slice(8)];
+}
+const many = (prefix: string, n: number, month: number | null = null) => Array.from({ length: n }, (_, i) => ph(`${prefix}${i}`, month));
+
+describe('growing month chapters', () => {
+  it('finds a chapter from any of its pages, extra spreads included', () => {
+    const pages = grown(1);
+    expect(chapterSpan(pages, 6)).toEqual([6, 7, 8, 9]);
+    expect([6, 7, 8, 9].map((i) => chapterStart(pages, i))).toEqual([6, 6, 6, 6]);
+    expect(chapterStart(pages, 4)).toBe(4);
+    expect(chapterStart(pages, 10)).toBe(10);
+    expect(chapterStart(pages, 2)).toBeNull();
+  });
+
+  it('says how many 9 + 9 spreads a month needs, and refuses past 50 or a full year', () => {
+    expect(spreadsToAdd(book([], many('j', 13)), 6, 1)).toBe(0);
+    expect(spreadsToAdd(book([], many('j', 14)), 6, 1)).toBe(1);
+    expect(spreadsToAdd(book([], many('j', 14)), 6, 19)).toBe(2);
+    expect(spreadsToAdd(grown(2, many('j', 14), many('m', 36)), 6, 1)).toBeNull();
+    expect(spreadsToAdd(book([], many('j', 14)), 6, MONTH_CAPACITY - 14)).toBe(2);
+    expect(spreadsToAdd(book(many('y', YEAR_CAPACITY)), 4, 1)).toBeNull();
+  });
+
+  it("carries uploads past the dropped-on spread into the month's extra pages", () => {
+    const r = placeOnSpread(grown(1, many('j', 13)), 6, { single: false, side: 'L' }, many('n', 3));
+    if (r.kind !== 'pages') throw new Error(r.kind);
+    expect(r.placed).toHaveLength(3);
+    expect(ids(r.pages, 8)).toEqual(['n1', 'n2']);
+  });
+
+  it('files inbox photos into extra pages once the first spread is full', () => {
+    const r = fileToChapter(grown(1, many('j', 14)), 6, ph('n'));
+    expect(ids(r.pages, 8)).toEqual(['n']);
+  });
+
+  it("moves several photos at once, and moves none if they don't all fit", () => {
+    const pages = grown(1, many('j', 2, 6), [], [ph('a'), ph('b'), ph('c')]);
+    const r = moveManyToChapter(pages, ['a', 'c'], 6);
+    if (r.kind !== 'moved') throw new Error(r.kind);
+    expect(r.moved).toBe(2);
+    expect(ids(r.pages, 4)).toEqual(['b']);
+    expect(months(r.pages, 7)).toEqual([6, 6]);
+    expect(moveManyToChapter(grown(0, many('j', 13)), ['a', 'b'], 6).kind).toBe('invalid');
+    expect(moveManyToChapter(book([ph('a'), ph('b')], many('j', 13)), ['a', 'b'], 6).kind).toBe('full');
+    expect(moveManyToChapter(pages, ['j0'], 6).kind).toBe('same');
+  });
+
+  it('puts a new month chapter after a grown month', () => {
+    // July spans pages 6-9, so August goes at 10.
+    expect(monthInsertAt(grown(1), 2024, 7)).toBe(10);
   });
 });

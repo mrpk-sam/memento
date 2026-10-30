@@ -1,4 +1,4 @@
-import { chapters, capacity, yearSpread, type ModelPage, type ModelPhoto } from './bookModel.js';
+import { chapterSpan, chapterStart, chapters, capacity, yearSpread, type ModelPage, type ModelPhoto } from './bookModel.js';
 
 // Photo placement and reflow, ported from the prototype's reflow(), setMonth(),
 // insertPhotos() and uploadToSpread(). Pure: they return new page arrays.
@@ -7,7 +7,31 @@ import { chapters, capacity, yearSpread, type ModelPage, type ModelPhoto } from 
 /** A year summary spread holds 6 + 9 photos, in month order. A month can hold any number of them. */
 export const YEAR_CAPACITY = 15;
 
+/** A month chapter grows extra 9 + 9 spreads up to this many photos: 6 + 8 + 4 × 9. */
+export const MONTH_CAPACITY = 50;
+
 type P = ModelPage & { photos?: ModelPhoto[] };
+
+const isMonth = (pages: P[], start: number) => pages[start]?.layout === 'monthL';
+const countIn = (pages: P[], idxs: number[]) => idxs.reduce((n, i) => n + (pages[i]?.photos?.length ?? 0), 0);
+
+/**
+ * How many extra spreads a chapter needs before `adding` more photos fit, or null if it
+ * would pass its limit (15 for a year, 50 for a month). Years never grow.
+ */
+export function spreadsToAdd(pages: P[], start: number, adding: number): number | null {
+  const span = chapterSpan(pages, start);
+  const have = countIn(pages, span);
+  if (!isMonth(pages, start)) return have + adding > YEAR_CAPACITY ? null : 0;
+  if (have + adding > MONTH_CAPACITY) return null;
+  const room = span.reduce((n, i) => n + capacity(pages[i]!), 0) - have;
+  return adding <= room ? 0 : Math.ceil((adding - room) / (2 * capacity({ layout: 'monthMore' })));
+}
+
+/** Photos a chapter can still take. */
+export function chapterRoom(pages: P[], start: number) {
+  return (isMonth(pages, start) ? MONTH_CAPACITY : YEAR_CAPACITY) - countIn(pages, chapterSpan(pages, start));
+}
 
 const monthKey = (p: ModelPhoto) => (p.month == null ? 99 : p.month);
 
@@ -81,13 +105,16 @@ export function placeOnSpread<T extends P>(pages: T[], L: number, opts: { single
     if (!added.length) return { kind: 'year-full' };
     return { kind: 'year', pages: reflow(pages, yl, [...all, ...added]), added, left: photos.length - added.length };
   }
-  const r = insertPhotos(pages, idxs, photos);
+  // In a month chapter, what doesn't fit the dropped-on spread carries on into the chapter's other pages.
+  const start = chapterStart(pages, L);
+  const rest = start != null && isMonth(pages, start) ? chapterSpan(pages, start).filter((i) => !idxs.includes(i)) : [];
+  const r = insertPhotos(pages, [...idxs, ...rest], photos);
   return { kind: 'pages', ...r };
 }
 
-/** Where an inbox photo filed to a chapter goes: the chapter's right page first, then its left. */
+/** Where an inbox photo filed to a chapter goes: the chapter's right page first, then its left, then any extra pages. */
 export function fileToChapter<T extends P>(pages: T[], chapterIdx: number, photo: ModelPhoto): InsertResult<T> {
-  return insertPhotos(pages, [chapterIdx + 1, chapterIdx], [photo]);
+  return insertPhotos(pages, [chapterIdx + 1, chapterIdx, ...chapterSpan(pages, chapterIdx).slice(2)], [photo]);
 }
 
 export type ChapterMoveResult<T> = { kind: 'moved'; pages: T[] } | { kind: 'same' } | { kind: 'full' } | { kind: 'invalid' };
@@ -103,7 +130,7 @@ export function moveToChapter<T extends P>(pages: T[], photoId: string, chapterI
   const fromIdx = pages.findIndex((pg) => pg.photos?.some((p) => p.id === photoId));
   const target = pages[chapterIdx];
   if (fromIdx < 0 || !target || (target.layout !== 'summaryL' && target.layout !== 'monthL')) return { kind: 'invalid' };
-  if (fromIdx === chapterIdx || fromIdx === chapterIdx + 1) return { kind: 'same' };
+  if (chapterSpan(pages, chapterIdx).includes(fromIdx)) return { kind: 'same' };
   const from = pages[fromIdx]!;
   const photo = from.photos!.find((p) => p.id === photoId)!;
   let next = pages.slice();
@@ -120,6 +147,23 @@ export function moveToChapter<T extends P>(pages: T[], photoId: string, chapterI
   const month = chapters(pages).months.find((m) => m.idx === chapterIdx)?.month ?? -1;
   const r = fileToChapter(next, chapterIdx, { ...photo, month: month >= 0 ? month : photo.month });
   return r.placed.length ? { kind: 'moved', pages: r.pages } : { kind: 'full' };
+}
+
+export type ChapterMovesResult<T> = { kind: 'moved'; pages: T[]; moved: number } | { kind: 'same' } | { kind: 'full' } | { kind: 'invalid' };
+
+/** Moves several photos into one chapter, in order. All or nothing: a full chapter moves none. */
+export function moveManyToChapter<T extends P>(pages: T[], photoIds: string[], chapterIdx: number): ChapterMovesResult<T> {
+  let next = pages;
+  let moved = 0;
+  for (const id of photoIds) {
+    const r = moveToChapter(next, id, chapterIdx);
+    if (r.kind === 'full' || r.kind === 'invalid') return { kind: r.kind };
+    if (r.kind === 'moved') {
+      next = r.pages;
+      moved++;
+    }
+  }
+  return moved ? { kind: 'moved', pages: next, moved } : { kind: 'same' };
 }
 
 /** Resolves a chapter key ("y-2026", "m-2026-July") to its page index. */

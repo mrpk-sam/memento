@@ -65,7 +65,10 @@ export function monthInsertAt(pages: ModelPage[], year: number, month: number): 
   const y = c.years.find((x) => x.year === year);
   if (!y) return null;
   let at = y.idx + 2;
-  for (const m of c.months) if (m.year === year && m.month < month && m.idx + 2 > at) at = m.idx + 2;
+  for (const m of c.months) {
+    const end = m.idx + chapterSpan(pages, m.idx).length;
+    if (m.year === year && m.month < month && end > at) at = end;
+  }
   return at;
 }
 
@@ -89,6 +92,30 @@ export function monthChapterPages(year: number, month: number) {
     { type: 'month', layout: 'monthL', themeId: 'cream', stickerPack: 'none', label: name, year, header: { kicker: `Chapter · ${name} ${year}`, title: name, subtitle: '', note: '' }, journal: null },
     { type: 'month', layout: 'monthR', themeId: 'cream', stickerPack: 'none', label: name, year, header: null, journal: '' },
   ];
+}
+
+/** A month chapter's extra spread (9 + 9 photos), added after its last page as the month fills. */
+export function monthMorePages(chapter: { label: string | null; year: number | null; themeId: string }) {
+  const page = { type: 'month', layout: 'monthMore', themeId: chapter.themeId, stickerPack: 'none', label: chapter.label, year: chapter.year, header: null, journal: null };
+  return [page, { ...page }];
+}
+
+/** The left page index of the chapter (year summary or month) that page i belongs to, or null. */
+export function chapterStart(pages: ModelPage[], i: number): number | null {
+  const layout = pages[i]?.layout;
+  if (layout === 'summaryL' || layout === 'monthL') return i;
+  if (layout === 'summaryR' || layout === 'monthR') return i - 1;
+  if (layout !== 'monthMore') return null;
+  let j = i;
+  while (pages[j - 1]?.layout === 'monthMore') j--;
+  return pages[j - 1]?.layout === 'monthR' ? j - 2 : null;
+}
+
+/** Every page index of the chapter that starts at `start`: its two pages, plus a month's extra spreads. */
+export function chapterSpan(pages: ModelPage[], start: number): number[] {
+  const out = [start, start + 1];
+  if (pages[start]?.layout === 'monthL') for (let j = start + 2; pages[j]?.layout === 'monthMore'; j++) out.push(j);
+  return out;
 }
 
 export const capacity = (pg: Pick<ModelPage, 'layout'>) => LAYOUT_CAPACITY[pg.layout as keyof typeof LAYOUT_CAPACITY] ?? 0;

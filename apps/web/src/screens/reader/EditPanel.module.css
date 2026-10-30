@@ -44,7 +44,15 @@
 .jump { height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: 500 13px/1 var(--font-ui); cursor: pointer; }
 .jump:hover { border-color: var(--accent); }
 .photoCard { display: grid; grid-template-columns: 64px minmax(0,1fr); gap: 12px; padding: 10px; border-radius: 12px; border: 1px solid; background: var(--surface); transition: border-color .2s, box-shadow .2s; }
-.thumb { width: 64px; height: 64px; border-radius: 6px; }
+.thumb { position: relative; width: 64px; height: 64px; border-radius: 6px; }
+.pick { position: absolute; top: 4px; left: 4px; width: 18px; height: 18px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.selectAll { margin-left: auto; margin-right: 8px; border: 0; background: none; padding: 0; color: var(--accent); font: 600 12px/1 var(--font-ui); text-decoration: underline; cursor: pointer; }
+.selectAll:disabled { opacity: .4; cursor: default; }
+/* Sits at the bottom of the scrolling panel while photos are ticked. */
+.bulk { position: sticky; bottom: -40px; margin: 0 -10px -40px; display: flex; align-items: center; gap: 8px; padding: 12px; border-radius: 14px; background: var(--ink); color: var(--bg); box-shadow: 0 10px 30px -10px var(--shadow); animation: kpop .3s var(--spring) both; }
+.bulkCount { font: 600 13px/1 var(--font-ui); white-space: nowrap; }
+.bulk select { flex: 1; min-width: 0; height: 32px; border-radius: 8px; border: 0; background: var(--bg); color: var(--ink); padding: 0 8px; font: 500 13px/1 var(--font-ui); cursor: pointer; }
+.bulkClear { border: 0; background: none; color: inherit; font: 500 13px/1 var(--font-ui); text-decoration: underline; cursor: pointer; padding: 0 4px; }
 .photoMeta { display: flex; justify-content: space-between; gap: 8px; font: 400 11px/1.2 var(--font-mono); color: var(--ink2); }
 .photoMeta > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .monthRow { display: flex; align-items: center; gap: 8px; font: 500 12px/1 var(--font-ui); color: var(--ink2); }

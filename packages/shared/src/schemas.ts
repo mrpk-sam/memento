@@ -12,7 +12,7 @@ export type BookKind = z.infer<typeof BookKind>;
 export const PageType = z.enum(['endpaper', 'title', 'index', 'chapters', 'summary', 'month', 'closing', 'backpaper']);
 export type PageType = z.infer<typeof PageType>;
 
-export const Layout = z.enum(['summaryL', 'summaryR', 'monthL', 'monthR']);
+export const Layout = z.enum(['summaryL', 'summaryR', 'monthL', 'monthR', 'monthMore']);
 export type Layout = z.infer<typeof Layout>;
 
 export const HexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/);

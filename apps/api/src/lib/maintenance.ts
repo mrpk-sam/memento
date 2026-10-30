@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, lt, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, lt, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import * as s from '../db/schema.js';
 import type { Storage } from './s3.js';
@@ -12,6 +12,7 @@ export const PURGE_AFTER_DAYS = 30;
  * - expired sessions, magic links, unlocks and old PIN attempts
  * - uploads that were never processed (older than a day)
  * - photos, videos, inbox items, books, households and people soft-deleted over 30 days ago, with their files
+ * - extra month spreads left empty
  */
 export async function runMaintenance(db: Db, storage: Storage, now = new Date()) {
   const dayAgo = new Date(now.getTime() - DAY);
@@ -58,6 +59,8 @@ export async function runMaintenance(db: Db, storage: Storage, now = new Date())
   const users = await db.delete(s.users).where(and(isNotNull(s.users.deletedAt), lt(s.users.deletedAt, purgeBefore))).returning({ id: s.users.id });
   report.users = users.length;
 
+  report.emptySpreads = await dropEmptyMonthSpreads(db);
+
   // Decided access requests.
   await db.delete(s.accessRequests).where(and(isNotNull(s.accessRequests.decidedAt), lt(s.accessRequests.decidedAt, purgeBefore)));
 
@@ -78,4 +81,37 @@ export async function runMaintenance(db: Db, storage: Storage, now = new Date())
 
 async function removeKeys(storage: Storage, keys: (string | null)[]) {
   for (const k of keys) if (k) await storage.delete(k).catch(() => {});
+}
+
+/**
+ * Removes extra month spreads (monthMore pairs) with no photo on either page, not even a deleted
+ * one that Undo could bring back, then closes up the book's page positions. It runs here, not
+ * when photos leave, so Undo always finds the pages it needs.
+ */
+export async function dropEmptyMonthSpreads(db: Db) {
+  const empty = await db
+    .select({ id: s.pages.id, bookId: s.pages.bookId })
+    .from(s.pages)
+    .where(and(eq(s.pages.layout, 'monthMore'), sql`not exists (select 1 from ${s.photos} where ${s.photos.pageId} = ${s.pages.id})`));
+  const emptyIds = new Set(empty.map((p) => p.id));
+  let dropped = 0;
+  for (const bookId of new Set(empty.map((p) => p.bookId))) {
+    const rows = await db.select({ id: s.pages.id, layout: s.pages.layout }).from(s.pages).where(eq(s.pages.bookId, bookId)).orderBy(asc(s.pages.position));
+    // Extra spreads follow a month's right page in pairs; only a pair with both pages empty goes.
+    const drop: string[] = [];
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i]!.layout !== 'monthMore' || rows[i - 1]?.layout === 'monthMore') continue;
+      for (let j = i; rows[j]?.layout === 'monthMore' && rows[j + 1]?.layout === 'monthMore'; j += 2) {
+        if (emptyIds.has(rows[j]!.id) && emptyIds.has(rows[j + 1]!.id)) drop.push(rows[j]!.id, rows[j + 1]!.id);
+      }
+    }
+    if (!drop.length) continue;
+    await db.transaction(async (tx) => {
+      await tx.delete(s.pages).where(inArray(s.pages.id, drop));
+      const keep = rows.filter((r) => !drop.includes(r.id));
+      for (const [position, r] of keep.entries()) await tx.update(s.pages).set({ position }).where(eq(s.pages.id, r.id));
+    });
+    dropped += drop.length / 2;
+  }
+  return dropped;
 }
