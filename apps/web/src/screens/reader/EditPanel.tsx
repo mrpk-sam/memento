@@ -70,6 +70,14 @@ export function EditPanel({ content, themes, L, single, goTo, selPhoto, setSelPh
   const yearInView = pgs.find((p) => p.year != null)?.year ?? (ch.years.length ? ch.years[ch.years.length - 1]!.year : null);
   const freeMonths = yearInView == null ? [] : MONTHS.map((m, k) => ({ m, k })).filter(({ k }) => !hasMonthChapter(pages, yearInView, k));
   const [newMonth, setNewMonth] = useState<number | ''>('');
+  // The action in flight (adding a year or month, moving photos). A second click waits for it,
+  // so a double click can't add two years or move the same photos twice.
+  const [acting, setActing] = useState<string | null>(null);
+  const once = (name: string, fn: () => Promise<unknown>) => {
+    if (acting) return;
+    setActing(name);
+    void fn().finally(() => setActing(null));
+  };
   // Every year and month chapter, for each photo's "Chapter" menu and the bulk move.
   const chapterOpts = chapterList(pages);
   // Photos ticked for a bulk move. The selection stays while turning pages, so it can span spreads.
@@ -112,7 +120,7 @@ export function EditPanel({ content, themes, L, single, goTo, selPhoto, setSelPh
               </button>
             );
           })}
-          <button className={s.addChip} onClick={() => void editor.addYear()}>+ Add {nextYear(pages)}</button>
+          <button className={s.addChip} disabled={!!acting} onClick={() => once('year', () => editor.addYear())}>+ Add {nextYear(pages)}</button>
         </div>
         {yearInView != null && freeMonths.length > 0 && (
           <div className={s.monthAdd}>
@@ -124,11 +132,11 @@ export function EditPanel({ content, themes, L, single, goTo, selPhoto, setSelPh
             </select>
             <button
               className={s.addChip}
-              disabled={newMonth === ''}
+              disabled={newMonth === '' || !!acting}
               style={{ opacity: newMonth === '' ? 0.5 : 1 }}
               onClick={() => {
                 if (newMonth === '') return;
-                void editor.addMonth(yearInView, newMonth);
+                once('month', () => editor.addMonth(yearInView, newMonth));
                 setNewMonth('');
               }}
             >
@@ -378,10 +386,11 @@ export function EditPanel({ content, themes, L, single, goTo, selPhoto, setSelPh
                         <select
                           aria-label="Chapter for this photo"
                           value={String(chapterStart(pages, i) ?? i)}
-                          disabled={p.id.startsWith('tmp-')}
+                          disabled={p.id.startsWith('tmp-') || !!acting}
                           onChange={(e) => {
                             e.stopPropagation();
-                            void editor.moveToChapter([p.id], +e.target.value);
+                            const to = +e.target.value;
+                            once('move', () => editor.moveToChapter([p.id], to));
                           }}
                         >
                           {chapterOpts.map((c) => (
@@ -455,9 +464,10 @@ export function EditPanel({ content, themes, L, single, goTo, selPhoto, setSelPh
           <select
             aria-label="Move selected photos to"
             value=""
+            disabled={!!acting}
             onChange={(e) => {
               const to = +e.target.value;
-              void editor.moveToChapter(pickedIds, to).then((ok) => ok && setPicked(new Set()));
+              once('move', () => editor.moveToChapter(pickedIds, to).then((ok) => ok && setPicked(new Set())));
             }}
           >
             <option value="" disabled>

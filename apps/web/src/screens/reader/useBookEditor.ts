@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { MONTHS, chapterList, moveManyToChapter, movePhoto as placeMove, placeOnSpread, setMonth as placeMonth } from '@memento/shared';
+import { MONTHS, chapterList, chapterStart, moveManyToChapter, movePhoto as placeMove, placeOnSpread, setMonth as placeMonth } from '@memento/shared';
 import { ApiError, api, errorMessage } from '../../api/client';
 import { qk } from '../../api/hooks';
 import type { BookContent, PageDto, PhotoDto } from '../../api/types';
 import { useToast } from '../../lib/toast';
-import { imageFiles, isVideoFile, mediaFiles, uploadFiles } from '../../lib/upload';
+import { imageFiles, isVideoFile, mediaFiles, screenFiles, uploadFiles } from '../../lib/upload';
 
 type Saved = 'All changes saved' | 'Saving…' | 'Saved just now';
 type LayoutEntry = { id: string; pageId: string | null; position: number; month: number | null };
@@ -25,11 +25,39 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
   const [loading, setLoading] = useState<LoadingSet>(new Set());
   const pending = useRef(0);
   const debounces = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  /** The debounced saves still waiting, so flush() can send them early. */
+  const waiting = useRef(new Map<string, () => void>());
   useEffect(() => () => debounces.current.forEach(clearTimeout), []);
+  /**
+   * Text typed but not saved yet (captions; page header, journal and title text). A reply from
+   * another save, or a reload after a failed one, must not put the old text back on screen.
+   */
+  const unsaved = useRef({ captions: new Map<string, string>(), pages: new Map<string, PagePatch>() });
+
+  const withUnsaved = (pages: PageDto[]) => {
+    const u = unsaved.current;
+    if (!u.captions.size && !u.pages.size) return pages;
+    const cap = <P extends PhotoDto | null>(p: P): P => (p && u.captions.has(p.id) ? { ...p, caption: u.captions.get(p.id)! } : p);
+    return pages.map((pg) => {
+      const patch = u.pages.get(pg.id);
+      const next = patch ? applyPagePatch(pg, patch) : pg;
+      return u.captions.size ? { ...next, hero: cap(next.hero), photos: next.photos.map(cap) } : next;
+    });
+  };
 
   const get = () => qc.getQueryData<BookContent>(key);
   const setPages = (fn: (p: PageDto[]) => PageDto[]) => qc.setQueryData<BookContent>(key, (c) => c && { ...c, pages: fn(c.pages) });
-  const setContent = (c: Pick<BookContent, 'book' | 'pages'>) => qc.setQueryData<BookContent>(key, { book: c.book, pages: c.pages });
+  const setContent = (c: Pick<BookContent, 'book' | 'pages'>) => qc.setQueryData<BookContent>(key, { book: c.book, pages: withUnsaved(c.pages) });
+
+  /** Sends every debounced save now. Runs before any other save, so the server sees text first. */
+  const flush = () => {
+    for (const [k, fn] of [...waiting.current]) {
+      clearTimeout(debounces.current.get(k));
+      debounces.current.delete(k);
+      waiting.current.delete(k);
+      fn();
+    }
+  };
   const refresh = () => qc.invalidateQueries({ queryKey: key });
   const setBusy = (ids: string[], on: boolean) =>
     setLoading((cur) => {
@@ -41,6 +69,7 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
   /** Runs a save, tracking the indicator. Failures toast and reload the true state. */
   const save = useCallback(
     async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {
+      flush();
       pending.current++;
       setSaved('Saving…');
       try {
@@ -48,6 +77,8 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
       } catch (e) {
         toast(errorMessage(e));
         await refresh();
+        // Text that didn't save stays on screen; it's sent again when the connection is back.
+        setPages(withUnsaved);
         return undefined;
       } finally {
         pending.current--;
@@ -65,8 +96,48 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
   const later = (k: string, ms: number, fn: () => void) => {
     clearTimeout(debounces.current.get(k));
     setSaved('Saving…');
-    debounces.current.set(k, setTimeout(fn, ms));
+    waiting.current.set(k, fn);
+    debounces.current.set(
+      k,
+      setTimeout(() => {
+        debounces.current.delete(k);
+        waiting.current.delete(k);
+        fn();
+      }, ms),
+    );
   };
+
+  /** Saves a caption after a pause in typing. It counts as unsaved until the server has it. */
+  const queueCaption = (photoId: string, caption: string) => {
+    unsaved.current.captions.set(photoId, caption);
+    later(`cap:${photoId}`, 600, () =>
+      void save(() => api(`/photos/${photoId}`, { method: 'PATCH', body: { caption } })).then((ok) => {
+        if (ok !== undefined && unsaved.current.captions.get(photoId) === caption) unsaved.current.captions.delete(photoId);
+      }),
+    );
+  };
+
+  // Back online: send again whatever didn't save. Leaving the page with work in flight asks first.
+  useEffect(() => {
+    const retry = () => {
+      for (const [id, caption] of unsaved.current.captions) queueCaption(id, caption);
+      for (const [id, patch] of unsaved.current.pages) sendPagePatch(id, patch);
+    };
+    const warn = (e: BeforeUnloadEvent) => {
+      const u = unsaved.current;
+      if (pending.current > 0 || waiting.current.size || u.captions.size || u.pages.size) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('online', retry);
+    window.addEventListener('beforeunload', warn);
+    return () => {
+      window.removeEventListener('online', retry);
+      window.removeEventListener('beforeunload', warn);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookId]);
 
   const findPhoto = (id: string) => {
     for (const pg of get()?.pages ?? []) {
@@ -85,24 +156,19 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
       })),
     );
 
-  const patchPage = (pageId: string, body: Partial<Pick<PageDto, 'themeId' | 'stickerPack' | 'journal'>> & { header?: Partial<NonNullable<PageDto['header']>>; text?: Record<string, string> }, debounceMs = 0) => {
-    setPages((pages) =>
-      pages.map((pg) =>
-        pg.id !== pageId
-          ? pg
-          : {
-              ...pg,
-              ...(body.themeId ? { themeId: body.themeId } : {}),
-              ...(body.stickerPack ? { stickerPack: body.stickerPack } : {}),
-              ...(body.journal !== undefined ? { journal: body.journal } : {}),
-              ...(body.header ? { header: { ...(pg.header ?? {}), ...body.header } } : {}),
-              ...(body.text ? { text: { ...(pg.text ?? {}), ...body.text } } : {}),
-            },
-      ),
-    );
-    const send = () => void save(() => api(`/pages/${pageId}`, { method: 'PATCH', body }));
-    if (debounceMs) later(`page:${pageId}:${Object.keys(body).join()}`, debounceMs, send);
-    else send();
+  /** Sends a page change. Text changes count as unsaved until the server has them. */
+  const sendPagePatch = (pageId: string, body: PagePatch) =>
+    void save(() => api(`/pages/${pageId}`, { method: 'PATCH', body })).then((ok) => {
+      if (ok !== undefined && unsaved.current.pages.get(pageId) === body) unsaved.current.pages.delete(pageId);
+    });
+
+  const patchPage = (pageId: string, body: PagePatch, debounceMs = 0) => {
+    setPages((pages) => pages.map((pg) => (pg.id === pageId ? applyPagePatch(pg, body) : pg)));
+    if (!debounceMs) return sendPagePatch(pageId, body);
+    // Typed text waits for a pause. Changes to other fields of the page pile up, so none is lost.
+    const merged = mergePagePatch(unsaved.current.pages.get(pageId), body);
+    unsaved.current.pages.set(pageId, merged);
+    later(`page:${pageId}`, debounceMs, () => sendPagePatch(pageId, merged));
   };
 
   /** Types text out 2 characters every 24ms, as the prototype does for fresh captions. */
@@ -174,7 +240,7 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
 
     setCaption(photoId: string, caption: string) {
       updatePhoto(photoId, { caption });
-      later(`cap:${photoId}`, 600, () => void save(() => api(`/photos/${photoId}`, { method: 'PATCH', body: { caption } })));
+      queueCaption(photoId, caption);
     },
 
     setTitleText(patch: Record<string, string>) {
@@ -232,7 +298,10 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
       if (!c || !target || !photoIds.length) return false;
       const name = chapterList(c.pages).find((x) => x.idx === chapterIdx)?.name ?? 'that chapter';
       const local = moveManyToChapter(c.pages, photoIds, chapterIdx);
-      if (local.kind === 'same') return false;
+      if (local.kind === 'same') {
+        toast(`Already in ${name}`);
+        return false;
+      }
       if (local.kind === 'moved') setPages(() => local.pages as PageDto[]);
       const res = await save(() => api<BookContent & { moved: number; before?: LayoutEntry[] }>(`/books/${bookId}/chapter-moves`, { body: { photoIds, pageId: target.id } }));
       if (!res) return false;
@@ -273,10 +342,15 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
 
     /** Uploads dropped files and places them like the prototype's uploadToSpread(). */
     async uploadToSpread(list: FileList | File[], L: number, single: boolean, side?: 'L' | 'R') {
-      const files = mediaFiles(list);
-      if (!files.length) return toast('Only photos and videos can be added.');
+      const picked = mediaFiles(list);
+      if (!picked.length) return toast('Only photos and videos can be added.');
+      // Files the server would refuse are set aside, so they don't stop the rest of the batch.
+      const { ok: files, rejected } = screenFiles(picked);
+      if (!files.length) return toast(rejected.map((r) => r.error).join(' '));
       const c = get();
       if (!c) return;
+      const start = chapterStart(c.pages, L);
+      const chapterName = (start != null && chapterList(c.pages).find((x) => x.idx === start)?.name) || 'This chapter';
       // Show the photos at once, with local previews, while they upload.
       const temp = files.map((f, i) => ({ id: `tmp-${Date.now()}-${i}`, month: null, file: f }));
       const probe = placeOnSpread(c.pages, L, { single, side }, temp);
@@ -293,22 +367,26 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
       setPages(() => probe.pages.map((pg) => ({ ...(pg as PageDto), photos: (pg.photos ?? []).map(toDto) })));
       setBusy(temp.map((t) => t.id), true);
 
-      type PhotosRes = BookContent & { kind: 'year' | 'pages'; added: { id: string; month: number | null }[]; left: number; skipped: { name: string; error: string }[] };
+      type PhotosRes = BookContent & { kind: 'year' | 'pages'; added: { id: string; month: number | null }[]; left: number; monthFull?: boolean; skipped: { name: string; error: string }[] };
       // Files upload in parallel, then each is processed in its own short request, so a
       // batch never risks a proxy timeout and photos appear one by one.
       const res = await save(async () => {
-        const refs = await uploadFiles(files);
-        const out = { kind: probe.kind as 'year' | 'pages', added: [] as { id: string; month: number | null }[], left: 0, skipped: [] as { name: string; error: string }[], content: null as PhotosRes | null };
-        for (const [i, ref] of refs.entries()) {
-          try {
-            const r = await api<PhotosRes>(`/books/${bookId}/photos`, { body: { uploads: [ref], L, single, side } });
-            out.added.push(...r.added);
-            out.left += r.left;
-            out.skipped.push(...r.skipped);
-            out.content = r;
-          } catch (e) {
-            if (e instanceof ApiError && e.status === 400 && /full|no photo slots/i.test(e.message)) out.left += 1;
-            else out.skipped.push({ name: ref.name, error: errorMessage(e) });
+        const results = await uploadFiles(files);
+        const out = { kind: probe.kind as 'year' | 'pages', added: [] as { id: string; month: number | null }[], left: 0, monthFull: false, skipped: [...rejected], content: null as PhotosRes | null };
+        for (const [i, up] of results.entries()) {
+          if (!up.ok) out.skipped.push({ name: up.name, error: up.error });
+          else {
+            try {
+              const r = await api<PhotosRes>(`/books/${bookId}/photos`, { body: { uploads: [up.ref], L, single, side } });
+              out.added.push(...r.added);
+              out.left += r.left;
+              out.monthFull ||= !!r.monthFull;
+              out.skipped.push(...r.skipped);
+              out.content = r;
+            } catch (e) {
+              if (e instanceof ApiError && e.status === 400 && /full|no photo slots/i.test(e.message)) out.left += 1;
+              else out.skipped.push({ name: up.ref.name, error: errorMessage(e) });
+            }
           }
           // Show what's done so far, with previews for the photos still to come.
           const rest = temp.slice(i + 1);
@@ -326,12 +404,15 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
       });
       setBusy(temp.map((t) => t.id), false);
       urls.forEach((u) => URL.revokeObjectURL(u));
+      // Previews of files that never made it (offline, refused) go; the server's pages are the truth.
+      setPages((pages) => pages.map((pg) => (pg.photos.some((p) => p.id.startsWith('tmp-')) ? { ...pg, photos: pg.photos.filter((p) => !p.id.startsWith('tmp-')) } : pg)));
       if (!res) return;
       if (res.content) setContent(res.content);
       else await refresh();
       const skipped = res.skipped.length ? ` ${res.skipped.length} couldn't be added: ${res.skipped.map((x) => x.error).filter((v, i, a) => a.indexOf(v) === i).join(' ')}` : '';
+      const full = res.monthFull ? `${chapterName} holds 50 photos` : 'This spread is full';
       if (!res.added.length) {
-        toast(res.left ? 'This spread is full. Remove a photo or turn to another chapter.' : skipped.trim() || 'No photos were added.');
+        toast(res.left ? `${full}. Remove a photo or turn to another chapter.${skipped}` : skipped.trim() || 'No photos were added.');
         return;
       }
       if (res.kind === 'year') {
@@ -339,7 +420,7 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
         toast(
           `Added ${n} photo${n === 1 ? '' : 's'}${res.left ? `. ${res.left} didn't fit` : ''}. Pick ${n === 1 ? 'its month' : 'their months'} in the editor to put the year in order.${skipped}`,
         );
-      } else if (res.left) toast(`${res.left} photo${res.left > 1 ? 's' : ''} didn't fit. This spread is full.${skipped}`);
+      } else if (res.left) toast(`${res.left} photo${res.left > 1 ? 's' : ''} didn't fit. ${full}.${skipped}`);
       else if (skipped) toast(skipped.trim());
       if (res.added[0]) opts.select(res.added[0].id);
       if (opts.autoCaption) for (const p of res.added) void regen(p.id);
@@ -348,9 +429,12 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
     async replaceHero(list: FileList | File[]) {
       const [file] = imageFiles(list);
       if (!file) return toast('Only image files can be added.');
+      const { rejected } = screenFiles([file]);
+      if (rejected.length) return toast(rejected[0]!.error);
       const res = await save(async () => {
-        const [ref] = await uploadFiles([file]);
-        return api<BookContent & { previous: string | null }>(`/books/${bookId}/hero`, { method: 'PUT', body: { upload: ref } });
+        const [up] = await uploadFiles([file]);
+        if (!up?.ok) throw new Error(up?.error ?? "That photo didn't upload.");
+        return api<BookContent & { previous: string | null }>(`/books/${bookId}/hero`, { method: 'PUT', body: { upload: up.ref } });
       });
       if (!res) return;
       setContent(res);
@@ -370,3 +454,21 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
 }
 
 export type BookEditor = ReturnType<typeof useBookEditor>;
+
+type PagePatch = Partial<Pick<PageDto, 'themeId' | 'stickerPack' | 'journal'>> & { header?: Partial<NonNullable<PageDto['header']>>; text?: Record<string, string> };
+
+function applyPagePatch(pg: PageDto, body: PagePatch): PageDto {
+  return {
+    ...pg,
+    ...(body.themeId ? { themeId: body.themeId } : {}),
+    ...(body.stickerPack ? { stickerPack: body.stickerPack } : {}),
+    ...(body.journal !== undefined ? { journal: body.journal } : {}),
+    ...(body.header ? { header: { ...(pg.header ?? {}), ...body.header } } : {}),
+    ...(body.text ? { text: { ...(pg.text ?? {}), ...body.text } } : {}),
+  };
+}
+
+function mergePagePatch(a: PagePatch | undefined, b: PagePatch): PagePatch {
+  if (!a) return b;
+  return { ...a, ...b, ...(a.header || b.header ? { header: { ...a.header, ...b.header } } : {}), ...(a.text || b.text ? { text: { ...a.text, ...b.text } } : {}) };
+}

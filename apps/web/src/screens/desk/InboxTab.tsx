@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { poss } from '@memento/shared';
-import { api, errorMessage } from '../../api/client';
+import { ApiError, api, errorMessage } from '../../api/client';
 import { qk, useInbox, useLibrary } from '../../api/hooks';
 import type { InboxData, InboxItem } from '../../api/types';
 import { useToast } from '../../lib/toast';
 import { typeOut } from '../../lib/typeOut';
-import { MEDIA_ACCEPT, isVideoFile, mediaFiles, uploadFiles } from '../../lib/upload';
+import { MEDIA_ACCEPT, isVideoFile, mediaFiles, screenFiles, uploadFiles } from '../../lib/upload';
 import d from './Desk.module.css';
 import s from './InboxTab.module.css';
 
@@ -60,9 +60,24 @@ export function InboxTab() {
     }
   }
 
-  async function addFiles(list: FileList | File[]) {
-    const files = mediaFiles(list);
-    if (!files.length) return toast('Only photos and videos can be added.');
+  /**
+   * Uploads files into the inbox. Returns the files that are settled: added, or refused for good
+   * (too big, not a photo). Files that hit a network error aren't, so shared ones can be retried.
+   */
+  async function addFiles(list: FileList | File[]): Promise<Set<File>> {
+    const settled = new Set<File>();
+    const picked = mediaFiles(list);
+    if (!picked.length) {
+      toast('Only photos and videos can be added.');
+      return new Set(Array.from(list));
+    }
+    // Files the server would refuse are set aside, so they don't stop the rest of the batch.
+    const { ok: files, rejected } = screenFiles(picked);
+    for (const f of picked) if (!files.includes(f)) settled.add(f);
+    if (!files.length) {
+      toast(rejected.map((r) => r.error).join(' '));
+      return settled;
+    }
     const placeholders: Card[] = files.map((f, i) => {
       // A video file can't be shown as an image; its card stays blank until the poster arrives.
       const u = isVideoFile(f) ? null : URL.createObjectURL(f);
@@ -70,17 +85,23 @@ export function InboxTab() {
     });
     setTemp((t) => [...t, ...placeholders]);
     try {
-      const refs = await uploadFiles(files);
+      const results = await uploadFiles(files);
       // One short request per photo, so a big batch can't hit a proxy timeout.
-      const failed: string[] = [];
-      for (const [i, ref] of refs.entries()) {
-        try {
-          const res = await api<{ items: InboxItem[]; skipped: { name: string; error: string }[] }>('/inbox', { body: { uploads: [ref] } });
-          setItems((items) => [...items, ...res.items]);
-          failed.push(...res.skipped.map((x) => x.error));
-          if (lib?.settings.aiAuto) res.items.forEach((it) => void caption(it));
-        } catch (e) {
-          failed.push(errorMessage(e));
+      const failed: string[] = rejected.map((r) => r.error);
+      for (const [i, up] of results.entries()) {
+        if (!up.ok) failed.push(up.error);
+        else {
+          try {
+            const res = await api<{ items: InboxItem[]; skipped: { name: string; error: string }[] }>('/inbox', { body: { uploads: [up.ref] } });
+            setItems((items) => [...items, ...res.items]);
+            failed.push(...res.skipped.map((x) => x.error));
+            settled.add(files[i]!);
+            if (lib?.settings.aiAuto) res.items.forEach((it) => void caption(it));
+          } catch (e) {
+            failed.push(errorMessage(e));
+            // The server answered, so trying the same file again won't help.
+            if (e instanceof ApiError) settled.add(files[i]!);
+          }
         }
         const done = placeholders[i]!;
         if (done.thumbUrl) URL.revokeObjectURL(done.thumbUrl);
@@ -94,24 +115,29 @@ export function InboxTab() {
       setTemp((t) => t.filter((x) => !placeholders.includes(x)));
       void qc.invalidateQueries({ queryKey: qk.inbox });
     }
+    return settled;
   }
 
   // Photos shared into the app from the phone gallery (see the service worker).
+  // They stay in the cache until they're added, so a failed upload (offline, say) is tried again
+  // the next time the inbox opens.
   useEffect(() => {
-    if (!('caches' in window) || !new URLSearchParams(location.search).has('shared')) return;
+    if (!('caches' in window)) return;
+    if (new URLSearchParams(location.search).has('shared')) history.replaceState(null, '', location.pathname);
     void (async () => {
       const cache = await caches.open(SHARED_CACHE);
-      const keys = await cache.keys();
-      const files: File[] = [];
-      for (const k of keys) {
-        const r = await cache.match(k);
+      const waiting: { key: Request; file: File }[] = [];
+      for (const key of await cache.keys()) {
+        const r = await cache.match(key);
         if (!r) continue;
         const blob = await r.blob();
-        files.push(new File([blob], decodeURIComponent(r.headers.get('x-filename') ?? 'shared.jpg'), { type: blob.type }));
-        await cache.delete(k);
+        waiting.push({ key, file: new File([blob], decodeURIComponent(r.headers.get('x-filename') ?? 'shared.jpg'), { type: blob.type }) });
       }
-      history.replaceState(null, '', location.pathname);
-      if (files.length) await addFiles(files);
+      if (!waiting.length) return;
+      const settled = await addFiles(waiting.map((w) => w.file));
+      await Promise.all(waiting.filter((w) => settled.has(w.file)).map((w) => cache.delete(w.key)));
+      const left = waiting.length - settled.size;
+      if (left) toast(`${left} shared photo${left === 1 ? " hasn't" : "s haven't"} uploaded yet. They'll be tried again next time you open the inbox.`);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
