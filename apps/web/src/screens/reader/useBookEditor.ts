@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { MONTHS, movePhoto as placeMove, placeOnSpread, setMonth as placeMonth } from '@memento/shared';
+import { MONTHS, chapterList, moveToChapter as placeChapter, movePhoto as placeMove, placeOnSpread, setMonth as placeMonth } from '@memento/shared';
 import { ApiError, api, errorMessage } from '../../api/client';
 import { qk } from '../../api/hooks';
 import type { BookContent, PageDto, PhotoDto } from '../../api/types';
@@ -220,6 +220,23 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
         const before = res.before;
         toast('Photo moved', 'Undo', () => void save(async () => setContent(await api<BookContent>(`/books/${bookId}/layout`, { method: 'PUT', body: { photos: before } }))));
       }
+    },
+
+    /** Moves a photo into another chapter (by the chapter's left page index). Shows at once, with Undo. */
+    async moveToChapter(photoId: string, chapterIdx: number) {
+      const c = get();
+      const target = c?.pages[chapterIdx];
+      if (!c || !target) return;
+      const name = chapterList(c.pages).find((x) => x.idx === chapterIdx)?.name ?? 'that chapter';
+      const local = placeChapter(c.pages, photoId, chapterIdx);
+      if (local.kind === 'full') return toast(`${name} is full. Remove a photo there first.`);
+      if (local.kind !== 'moved') return;
+      setPages(() => local.pages as PageDto[]);
+      const res = await save(() => api<BookContent & { before?: LayoutEntry[] }>(`/photos/${photoId}/chapter`, { body: { pageId: target.id } }));
+      if (!res) return;
+      setContent(res);
+      const before = res.before;
+      if (before) toast(`Moved to ${name}`, 'Undo', () => void save(async () => setContent(await api<BookContent>(`/books/${bookId}/layout`, { method: 'PUT', body: { photos: before } }))));
     },
 
     async removePhoto(photoId: string) {

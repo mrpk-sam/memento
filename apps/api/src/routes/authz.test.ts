@@ -213,6 +213,7 @@ const rows = (): [string, string, object | undefined, Record<Role, Expect>][] =>
   ['PATCH', `/api/photos/${fx.openPhoto}`, { caption: 'x' }, { anon: 401, member: 'ok', hhAdmin: 'ok', admin: 'ok' }],
   ['POST', `/api/photos/${fx.photo}/month`, { month: 3 }, { anon: 401, member: 403, hhAdmin: 403, admin: 'ok' }],
   ['POST', `/api/photos/${fx.photo}/move`, { pageId: fx.summaryPage, position: 0 }, { anon: 401, member: 403, hhAdmin: 403, admin: 'ok' }],
+  ['POST', `/api/photos/${fx.photo}/chapter`, { pageId: fx.summaryPage }, { anon: 401, member: 403, hhAdmin: 403, admin: 'ok' }],
   ['DELETE', `/api/photos/${fx.photo}`, undefined, { anon: 401, member: 403, hhAdmin: 403, admin: 'ok' }],
   ['POST', `/api/photos/${fx.photo}/restore`, undefined, { anon: 401, member: 403, hhAdmin: 403, admin: 'ok' }],
 

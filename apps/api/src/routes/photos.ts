@@ -2,7 +2,7 @@ import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { and, eq, gt, inArray, isNull } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { LIMITS, Month, PageHeader, STICKER_PACKS, canEditBook, movePhoto, placeOnSpread, setMonth, type ModelPhoto } from '@memento/shared';
+import { LIMITS, Month, PageHeader, STICKER_PACKS, canEditBook, moveToChapter, movePhoto, placeOnSpread, setMonth, type ModelPhoto } from '@memento/shared';
 import type { Db } from '../db/client.js';
 import * as s from '../db/schema.js';
 import { loadPages, type PageDto } from '../lib/content.js';
@@ -253,6 +253,23 @@ export async function photoRoutes(app: FastifyInstance) {
     const r = movePhoto(pages, p.id, toIdx, v.position);
     if (r.kind === 'invalid') throw badRequest("That page doesn't hold photos");
     if (r.kind !== 'moved') return { kind: r.kind, ...(await loadBookContent(db, user, p.bookId)) };
+    const before = snapshot(pages, r.pages);
+    await db.transaction(async (tx) => {
+      await persistLayout(tx as unknown as Db, p.bookId, r.pages);
+      await tx.update(s.books).set({ updatedAt: new Date() }).where(eq(s.books.id, p.bookId));
+    });
+    return { kind: r.kind, before, ...(await loadBookContent(db, user, p.bookId)) };
+  });
+
+  /** Moves a photo into another chapter of its book (a year or a month chapter, by its left page). */
+  app.post<{ Params: { id: string } }>('/api/photos/:id/chapter', async (req) => {
+    const { user, p } = await photoForEdit(req, req.params.id);
+    const { pageId } = parse(z.object({ pageId: z.string().uuid() }), req.body);
+    const pages = await loadPages(db, p.bookId);
+    const r = moveToChapter(pages, p.id, pages.findIndex((pg) => pg.id === pageId));
+    if (r.kind === 'invalid') throw badRequest("That isn't a chapter in this book");
+    if (r.kind === 'full') throw badRequest('That chapter is full. Remove a photo there first.');
+    if (r.kind === 'same') return { kind: r.kind, ...(await loadBookContent(db, user, p.bookId)) };
     const before = snapshot(pages, r.pages);
     await db.transaction(async (tx) => {
       await persistLayout(tx as unknown as Db, p.bookId, r.pages);

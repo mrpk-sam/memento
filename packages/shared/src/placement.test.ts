@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { chapterList, monthInsertAt, nextYear, type ModelPage } from './bookModel.js';
-import { YEAR_CAPACITY, chapterIndex, fileToChapter, insertPhotos, placeOnSpread, reflow, setMonth } from './placement.js';
+import { YEAR_CAPACITY, chapterIndex, fileToChapter, insertPhotos, moveToChapter, placeOnSpread, reflow, setMonth } from './placement.js';
 
 type Ph = { id: string; month: number | null };
 const ph = (id: string, month: number | null = null): Ph => ({ id, month });
@@ -81,6 +81,37 @@ describe('setMonth', () => {
   it('returns null for photos outside a year spread', () => {
     expect(setMonth(book([], [ph('j')]), 'j', 3)).toBeNull();
     expect(setMonth(book(), 'missing', 3)).toBeNull();
+  });
+});
+
+describe('moveToChapter', () => {
+  it('moves a year photo into a month chapter, gives it that month, and closes the gap', () => {
+    const r = moveToChapter(book([ph('a', 0), ph('b', 6), ph('c', 8)], [ph('j1', 6)]), 'b', 6);
+    if (r.kind !== 'moved') throw new Error(r.kind);
+    expect(ids(r.pages, 4)).toEqual(['a', 'c']);
+    // Like inbox filing: the chapter's right page first.
+    expect(ids(r.pages, 7)).toEqual(['b']);
+    expect(months(r.pages, 7)).toEqual([6]);
+  });
+
+  it('adds to a month chapter that already has photos', () => {
+    const r = moveToChapter(book([ph('a')], [ph('j1', 6), ph('j2', 6)]), 'a', 6);
+    if (r.kind !== 'moved') throw new Error(r.kind);
+    expect([...ids(r.pages, 6), ...ids(r.pages, 7)]).toEqual(['j1', 'j2', 'a']);
+  });
+
+  it('moves a chapter photo back into a year in month order', () => {
+    const r = moveToChapter(book([ph('a', 0), ph('c', 8)], [ph('j1', 6)]), 'j1', 4);
+    if (r.kind !== 'moved') throw new Error(r.kind);
+    expect(ids(r.pages, 4)).toEqual(['a', 'j1', 'c']);
+    expect(ids(r.pages, 6)).toEqual([]);
+  });
+
+  it('reports a full target, the same chapter, and non-chapters', () => {
+    const full = Array.from({ length: YEAR_CAPACITY }, (_, i) => ph(`y${i}`));
+    expect(moveToChapter(book(full, [ph('j1', 6)]), 'j1', 4).kind).toBe('full');
+    expect(moveToChapter(book([ph('a')]), 'a', 4).kind).toBe('same');
+    expect(moveToChapter(book([ph('a')]), 'a', 2).kind).toBe('invalid');
   });
 });
 

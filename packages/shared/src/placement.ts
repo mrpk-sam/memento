@@ -90,6 +90,38 @@ export function fileToChapter<T extends P>(pages: T[], chapterIdx: number, photo
   return insertPhotos(pages, [chapterIdx + 1, chapterIdx], [photo]);
 }
 
+export type ChapterMoveResult<T> = { kind: 'moved'; pages: T[] } | { kind: 'same' } | { kind: 'full' } | { kind: 'invalid' };
+
+/**
+ * Moves a photo into another chapter: a year's summary or a month chapter, named by the
+ * chapter's left page index. The year it leaves closes the gap in month order.
+ * - Into a year: it joins in month order, keeping its month. A year holds 15.
+ * - Into a month chapter: it takes that month and fills the chapter like an inbox photo
+ *   (right page first, then left).
+ */
+export function moveToChapter<T extends P>(pages: T[], photoId: string, chapterIdx: number): ChapterMoveResult<T> {
+  const fromIdx = pages.findIndex((pg) => pg.photos?.some((p) => p.id === photoId));
+  const target = pages[chapterIdx];
+  if (fromIdx < 0 || !target || (target.layout !== 'summaryL' && target.layout !== 'monthL')) return { kind: 'invalid' };
+  if (fromIdx === chapterIdx || fromIdx === chapterIdx + 1) return { kind: 'same' };
+  const from = pages[fromIdx]!;
+  const photo = from.photos!.find((p) => p.id === photoId)!;
+  let next = pages.slice();
+  const yl = yearSpread(pages, fromIdx);
+  if (yl != null) next = reflow(next, yl, [...(pages[yl]!.photos ?? []), ...(pages[yl + 1]!.photos ?? [])].filter((p) => p.id !== photoId));
+  else next[fromIdx] = { ...from, photos: from.photos!.filter((p) => p.id !== photoId) };
+
+  if (target.layout === 'summaryL') {
+    const all = [...(next[chapterIdx]!.photos ?? []), ...(next[chapterIdx + 1]!.photos ?? [])];
+    if (all.length >= YEAR_CAPACITY) return { kind: 'full' };
+    return { kind: 'moved', pages: reflow(next, chapterIdx, [...all, photo]) };
+  }
+  // A chapter whose title isn't a month name (-1) leaves the photo's month as it was.
+  const month = chapters(pages).months.find((m) => m.idx === chapterIdx)?.month ?? -1;
+  const r = fileToChapter(next, chapterIdx, { ...photo, month: month >= 0 ? month : photo.month });
+  return r.placed.length ? { kind: 'moved', pages: r.pages } : { kind: 'full' };
+}
+
 /** Resolves a chapter key ("y-2026", "m-2026-July") to its page index. */
 export function chapterIndex(pages: ModelPage[], key: string): number | null {
   const c = chapters(pages);

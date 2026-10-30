@@ -67,6 +67,8 @@ export function EditPanel({ content, themes, L, single, goTo, selPhoto, setSelPh
   const yearInView = pgs.find((p) => p.year != null)?.year ?? (ch.years.length ? ch.years[ch.years.length - 1]!.year : null);
   const freeMonths = yearInView == null ? [] : MONTHS.map((m, k) => ({ m, k })).filter(({ k }) => !hasMonthChapter(pages, yearInView, k));
   const [newMonth, setNewMonth] = useState<number | ''>('');
+  // Every year and month chapter, for each photo's "Chapter" menu.
+  const chapterOpts = chapterList(pages);
 
   const field = (key: string, label: string, def: string) => ({ key, label, def, value: tx[key] ?? '' });
   const openGroups = [
@@ -332,6 +334,24 @@ export function EditPanel({ content, themes, L, single, goTo, selPhoto, setSelPh
                       <span>{p.subject}</span>
                       <span>p. {i}</span>
                     </div>
+                    {chapterOpts.length > 1 && (
+                      <label className={s.monthRow} onClick={(e) => e.stopPropagation()}>
+                        Chapter
+                        <select
+                          aria-label="Chapter for this photo"
+                          value={String(pages[i]?.layout === 'summaryR' || pages[i]?.layout === 'monthR' ? i - 1 : i)}
+                          disabled={p.id.startsWith('tmp-')}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            void editor.moveToChapter(p.id, +e.target.value);
+                          }}
+                        >
+                          {chapterOpts.map((c) => (
+                            <option key={c.key} value={c.idx}>{c.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                     {yl != null && (
                       <label className={s.monthRow} onClick={(e) => e.stopPropagation()}>
                         Month

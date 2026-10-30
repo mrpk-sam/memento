@@ -234,3 +234,23 @@ describe('editing photos', () => {
     expect((await api(member, 'PATCH', `/api/pages/${pg.id}`, { journal: 'hi' })).statusCode).toBe(403);
   });
 });
+
+describe('moving photos between chapters', () => {
+  it('moves a year photo into a month chapter with that month, refuses non-chapters, and Undo puts it back', async () => {
+    expect((await api(admin, 'POST', `/api/books/${bookId}/months`, { year: 2026, month: 5 })).statusCode).toBe(200);
+    const c = await content();
+    const june = c.pages.findIndex((p) => p.layout === 'monthL');
+    const before = c.pages.flatMap((p) => p.photos.map((ph) => [ph.id, p.id, ph.month]));
+    const photo = c.pages[4]!.photos[0]!;
+    const res = await api(admin, 'POST', `/api/photos/${photo.id}/chapter`, { pageId: c.pages[june]!.id });
+    expect(res.json().kind).toBe('moved');
+    const after = (await content()).pages;
+    expect(after[4]!.photos.map((p) => p.id)).not.toContain(photo.id);
+    const moved = [...after[june]!.photos, ...after[june + 1]!.photos].find((p) => p.id === photo.id);
+    expect(moved?.month).toBe(5);
+
+    expect((await api(admin, 'POST', `/api/photos/${photo.id}/chapter`, { pageId: after[2]!.id })).statusCode).toBe(400);
+    await api(admin, 'PUT', `/api/books/${bookId}/layout`, { photos: res.json().before });
+    expect((await content()).pages.flatMap((p) => p.photos.map((ph) => [ph.id, p.id, ph.month]))).toEqual(before);
+  });
+});
