@@ -70,8 +70,11 @@ export async function peopleRoutes(app: FastifyInstance) {
   }
 
   app.get('/api/people', async (req) => {
-    deskUser(req);
-    return listPeople(db, superEmail);
+    const actor = deskUser(req);
+    const list = await listPeople(db, superEmail);
+    if (actor.access === 'admin') return list;
+    // A household admin manages their own household only, so other people's emails stay hidden.
+    return { ...list, people: list.people.map((p) => (p.householdId === actor.householdId ? p : { ...p, email: null })) };
   });
 
   app.post('/api/people', async (req) => {

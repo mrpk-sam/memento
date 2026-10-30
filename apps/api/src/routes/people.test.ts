@@ -107,6 +107,13 @@ describe('people', () => {
       brooksId = hh('Nadia & Omar');
     });
 
+    it("see their own household's emails but not anyone else's", async () => {
+      const people = (await api(hhAdmin, 'GET', '/api/people')).json().people as { householdId: string | null; email: string | null; name: string }[];
+      expect(people.find((p) => p.name === 'Nadia')!.email).toBe('nadia@example.com');
+      expect(people.filter((p) => p.householdId !== brooksId).every((p) => p.email === null)).toBe(true);
+      expect((await api(admin, 'GET', '/api/people')).json().people.some((p: { email: string | null }) => p.email === 'admin@example.com')).toBe(true);
+    });
+
     it('see only the Family tab', async () => {
       expect((await api(hhAdmin, 'GET', '/api/me')).json().deskTabs).toEqual(['family']);
     });

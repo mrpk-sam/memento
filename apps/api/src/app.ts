@@ -114,6 +114,11 @@ export async function buildApp(deps: AppDeps) {
   app.setErrorHandler((err: FastifyError | HttpError, req, reply) => {
     if (err instanceof HttpError) return reply.code(err.statusCode).send({ error: err.message, ...err.extra });
     if (err.statusCode === 429) return reply.code(429).send({ error: 'Too many tries. Wait a few minutes and try again.' });
+    // An id that isn't a UUID can't match anything: Postgres reports it as invalid text (22P02).
+    const pgCode = (err as { code?: string; cause?: { code?: string } }).code ?? (err as { cause?: { code?: string } }).cause?.code;
+    if (pgCode === '22P02') return reply.code(404).send({ error: 'Not found' });
+    // A PATCH with no known fields reaches Drizzle as an empty update.
+    if (err.message === 'No values to set') return reply.code(400).send({ error: 'There was nothing to change.' });
     if (err.statusCode && err.statusCode < 500) return reply.code(err.statusCode).send({ error: err.message });
     req.log.error({ err }, 'Unhandled error');
     return reply.code(500).send({ error: 'Something went wrong on our side.' });

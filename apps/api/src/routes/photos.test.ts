@@ -286,7 +286,7 @@ describe('moving photos between chapters', () => {
     expect(c.pages.slice(july, july + 4).reduce((n, p) => n + p.photos.length, 0)).toBe(50);
     const add = await api(admin, 'POST', `/api/books/${bookId}/chapter-moves`, { photoIds: [c.pages[4]!.photos[0]!.id], pageId: c.pages[july]!.id });
     expect(add.statusCode).toBe(400);
-    expect(add.json().error).toBe('July 2026 has room for 0 more photos.');
+    expect(add.json().error).toBe('July 2026 is full.');
 
     // Moving the photo back leaves the extra spread holding only the stored fill rows; delete those
     // for good, and the hourly cleanup removes the now-empty spread and closes up the book.
@@ -299,5 +299,60 @@ describe('moving photos between chapters', () => {
     const end = await content();
     expect(end.pages.some((p) => p.layout === 'monthMore')).toBe(false);
     expect(end.pages.map((p) => p.position)).toEqual(end.pages.map((_, i) => i));
+  });
+});
+
+describe('keeping pages within their slots', () => {
+  const monthPages = async (title: string) => {
+    const c = await content();
+    const i = c.pages.findIndex((p) => p.layout === 'monthL' && p.header?.title === title);
+    return { c, i };
+  };
+
+  it('never overfills a page when two uploads land at once', async () => {
+    await api(admin, 'POST', `/api/books/${bookId}/months`, { year: 2026, month: 8 });
+    const { i } = await monthPages('September');
+    const a = await upload(admin, ['a1.jpg', 'a2.jpg', 'a3.jpg', 'a4.jpg', 'a5.jpg', 'a6.jpg', 'a7.jpg', 'a8.jpg']);
+    const b = await upload(admin, ['b1.jpg', 'b2.jpg', 'b3.jpg', 'b4.jpg', 'b5.jpg', 'b6.jpg', 'b7.jpg', 'b8.jpg']);
+    const both = await Promise.all([a, b].map((ups) => api(admin, 'POST', `/api/books/${bookId}/photos`, { uploads: ups, L: i, single: false, side: 'R' })));
+    expect(both.map((r) => r.statusCode)).toEqual([200, 200]);
+    const after = (await content()).pages;
+    for (const pg of after.slice(i, i + 4)) expect(pg.photos.length).toBeLessThanOrEqual(pg.layout === 'monthL' ? 6 : pg.layout === 'monthR' ? 8 : 9);
+    expect(after.slice(i, i + 4).reduce((n, p) => n + p.photos.length, 0)).toBe(16);
+  });
+
+  it('refuses an Undo that would overfill a page someone has filled since', async () => {
+    const { c, i } = await monthPages('September');
+    // Move a year photo into September, then fill the year to its 15.
+    const out = await api(admin, 'POST', `/api/books/${bookId}/chapter-moves`, { photoIds: [c.pages[4]!.photos[0]!.id], pageId: c.pages[i]!.id });
+    expect(out.statusCode).toBe(200);
+    const year = (await content()).pages;
+    const free = 15 - year[4]!.photos.length - year[5]!.photos.length;
+    if (free > 0) {
+      const ups = await upload(admin, Array.from({ length: free }, (_, k) => `fill${k}.jpg`));
+      expect((await api(admin, 'POST', `/api/books/${bookId}/photos`, { uploads: ups, L: 4, single: false, side: 'L' })).json().left).toBe(0);
+    }
+    const undo = await api(admin, 'PUT', `/api/books/${bookId}/layout`, { photos: out.json().before });
+    expect(undo.statusCode).toBe(409);
+    expect(undo.json().error).toBe("Too much has changed since then, so that can't be undone.");
+    const after = (await content()).pages;
+    expect(after[4]!.photos.length + after[5]!.photos.length).toBe(15);
+  });
+
+  it('brings a deleted photo back elsewhere in its chapter when its page filled up, and closes up months', async () => {
+    const { c, i } = await monthPages('September');
+    const left = c.pages[i]!;
+    const victim = left.photos[0]!;
+    const before = [...left.photos, ...c.pages[i + 1]!.photos].length;
+    await api(admin, 'DELETE', `/api/photos/${victim.id}`);
+    // The month closed up: the title page is still full if there are photos after it.
+    const closed = (await content()).pages;
+    expect(closed[i]!.photos).toHaveLength(Math.min(6, before - 1));
+    const res = await api(admin, 'POST', `/api/photos/${victim.id}/restore`);
+    expect(res.statusCode).toBe(200);
+    const all = (await content()).pages.flatMap((p) => p.photos.map((ph) => ph.id));
+    expect(all).toContain(victim.id);
+    const sept = (await monthPages('September'));
+    for (const pg of sept.c.pages.slice(sept.i, sept.i + 4)) expect(pg.photos.length).toBeLessThanOrEqual(pg.layout === 'monthL' ? 6 : pg.layout === 'monthR' ? 8 : 9);
   });
 });

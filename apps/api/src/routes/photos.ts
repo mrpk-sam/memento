@@ -2,11 +2,12 @@ import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { and, eq, gt, inArray, isNull } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { LIMITS, MONTH_CAPACITY, Month, PageHeader, STICKER_PACKS, canEditBook, chapterList, chapterRoom, chapterSpan, chapterStart, moveManyToChapter, movePhoto, placeOnSpread, setMonth, type ModelPhoto } from '@memento/shared';
+import { LIMITS, MONTH_CAPACITY, Month, PageHeader, STICKER_PACKS, canEditBook, chapterList, chapterRoom, chapterSpan, chapterStart, compactMonth, moveManyToChapter, movePhoto, placeBack, placeOnSpread, setMonth, withinCapacity, type ModelPhoto } from '@memento/shared';
 import type { Db } from '../db/client.js';
 import * as s from '../db/schema.js';
 import { loadPages, type PageDto } from '../lib/content.js';
-import { badRequest, forbidden, notFound, parse } from '../lib/http.js';
+import { HttpError, badRequest, forbidden, notFound, parse } from '../lib/http.js';
+import { withLock } from '../lib/locks.js';
 import { processImage, subjectFromName } from '../lib/images.js';
 import { photoKey, photoVideoKey } from '../lib/s3.js';
 import { requireUser, type SessionUser } from '../lib/session.js';
@@ -124,57 +125,67 @@ export async function photoRoutes(app: FastifyInstance) {
       z.object({ uploads: z.array(UploadRef).min(1).max(MAX_FILES), L: z.number().int().min(0), single: z.boolean(), side: z.enum(['L', 'R']).optional() }),
       req.body,
     );
-    let pages = await loadPages(db, book.id);
-    // A month chapter grows extra pages to take the upload, up to its limit of 50.
-    const start = chapterStart(pages, v.L);
-    if (start != null && pages[start]!.layout === 'monthL') {
-      const adding = Math.min(v.uploads.length, chapterRoom(pages, start));
-      if (adding > 0) pages = (await growChapter(db, book.id, pages, start, adding)) ?? pages;
-    }
     // Check for room before doing any image work.
-    const probe = placeOnSpread(pages, v.L, v, v.uploads.map((u) => ({ id: u.id, month: null })));
+    const probe = placeOnSpread(await loadPages(db, book.id), v.L, v, v.uploads.map((u) => ({ id: u.id, month: null })));
     if (probe.kind === 'no-slots') throw badRequest('This spread has no photo slots. Turn to a year or month first.');
     if (probe.kind === 'year-full') throw badRequest('This year is full. Remove a photo, or add more to a month chapter.');
 
+    // Image work runs outside the lock; placing reads the pages afresh inside it, so two uploads
+    // at once can't both take the same free slot.
     const { ok, skipped } = await readUploads(user.id, v.uploads);
     const fresh = ok.map((x) => ({ ...x, photoId: randomUUID() }));
-    const r = placeOnSpread(pages, v.L, v, fresh.map((f) => ({ id: f.photoId, month: null })));
-    if (r.kind === 'no-slots' || r.kind === 'year-full') throw badRequest('This spread is full.');
-    const placedIds = new Set(r.kind === 'year' ? r.added.map((a) => a.id) : r.placed);
-    const placed = fresh.filter((f) => placedIds.has(f.photoId));
-
-    await Promise.all(placed.map((f) => storeVariants(book.id, f.photoId, f.img)));
-    await db.transaction(async (tx) => {
-      if (placed.length) {
-        await tx.insert(s.photos).values(
-          placed.map((f) => ({
-            id: f.photoId,
-            bookId: book.id,
-            pageId: null,
-            objectKey: photoKey(book.id, f.photoId, 'orig'),
-            displayKey: photoKey(book.id, f.photoId, '1600'),
-            thumbKey: photoKey(book.id, f.photoId, '400'),
-            width: f.img.width,
-            height: f.img.height,
-            videoKey: f.img.video ? photoVideoKey(book.id, f.photoId) : null,
-            durationMs: f.img.durationMs,
-            subject: subjectFromName(f.ref.name),
-            takenAt: f.img.takenAt,
-            uploadedBy: user.id,
-          })),
-        );
+    return withLock(book.id, async () => {
+      let pages = await loadPages(db, book.id);
+      // A month chapter grows extra pages to take the upload, up to its limit of 50.
+      const start = chapterStart(pages, v.L);
+      const inMonth = start != null && pages[start]!.layout === 'monthL';
+      if (inMonth && fresh.length) {
+        const adding = Math.min(fresh.length, chapterRoom(pages, start));
+        if (adding > 0) pages = (await growChapter(db, book.id, pages, start, adding)) ?? pages;
       }
-      await persistLayout(tx as unknown as Db, book.id, r.pages);
-      await tx.update(s.books).set({ updatedAt: new Date() }).where(eq(s.books.id, book.id));
+      const r = placeOnSpread(pages, v.L, v, fresh.map((f) => ({ id: f.photoId, month: null })));
+      if (r.kind === 'no-slots' || r.kind === 'year-full') {
+        await cleanup(user.id, v.uploads);
+        throw badRequest(r.kind === 'year-full' ? 'This year is full. Remove a photo, or add more to a month chapter.' : 'This spread is full.');
+      }
+      const placedIds = new Set(r.kind === 'year' ? r.added.map((a) => a.id) : r.placed);
+      const placed = fresh.filter((f) => placedIds.has(f.photoId));
+
+      await Promise.all(placed.map((f) => storeVariants(book.id, f.photoId, f.img)));
+      await db.transaction(async (tx) => {
+        if (placed.length) {
+          await tx.insert(s.photos).values(
+            placed.map((f) => ({
+              id: f.photoId,
+              bookId: book.id,
+              pageId: null,
+              objectKey: photoKey(book.id, f.photoId, 'orig'),
+              displayKey: photoKey(book.id, f.photoId, '1600'),
+              thumbKey: photoKey(book.id, f.photoId, '400'),
+              width: f.img.width,
+              height: f.img.height,
+              videoKey: f.img.video ? photoVideoKey(book.id, f.photoId) : null,
+              durationMs: f.img.durationMs,
+              subject: subjectFromName(f.ref.name),
+              takenAt: f.img.takenAt,
+              uploadedBy: user.id,
+            })),
+          );
+        }
+        await persistLayout(tx as unknown as Db, book.id, r.pages);
+        await tx.update(s.books).set({ updatedAt: new Date() }).where(eq(s.books.id, book.id));
+      });
+      await cleanup(user.id, v.uploads);
+      return {
+        kind: r.kind,
+        added: r.kind === 'year' ? r.added : placed.map((f) => ({ id: f.photoId, month: null })),
+        left: r.left,
+        // A month that's full says so, rather than "this spread is full".
+        monthFull: inMonth && r.left > 0,
+        skipped,
+        ...(await loadBookContent(db, user, book.id)),
+      };
     });
-    await cleanup(user.id, v.uploads);
-    return {
-      kind: r.kind,
-      added: r.kind === 'year' ? r.added : placed.map((f) => ({ id: f.photoId, month: null })),
-      left: r.left,
-      skipped,
-      ...(await loadBookContent(db, user, book.id)),
-    };
   });
 
   /** Replaces the title page's cover (hero) photo with an upload, an existing photo, or nothing. */
@@ -237,34 +248,38 @@ export async function photoRoutes(app: FastifyInstance) {
   app.post<{ Params: { id: string } }>('/api/photos/:id/month', async (req) => {
     const { user, p } = await photoForEdit(req, req.params.id);
     const { month } = parse(z.object({ month: Month.nullable() }), req.body);
-    const pages = await loadPages(db, p.bookId);
-    const r = setMonth(pages, p.id, month);
-    if (!r) throw badRequest("Only photos in a year's summary have a month");
-    const before = snapshot(pages, r.pages);
-    await db.transaction(async (tx) => {
-      await persistLayout(tx as unknown as Db, p.bookId, r.pages);
-      await tx.update(s.books).set({ updatedAt: new Date() }).where(eq(s.books.id, p.bookId));
+    return withLock(p.bookId, async () => {
+      const pages = await loadPages(db, p.bookId);
+      const r = setMonth(pages, p.id, month);
+      if (!r) throw badRequest("Only photos in a year's summary have a month");
+      const before = snapshot(pages, r.pages);
+      await db.transaction(async (tx) => {
+        await persistLayout(tx as unknown as Db, p.bookId, r.pages);
+        await tx.update(s.books).set({ updatedAt: new Date() }).where(eq(s.books.id, p.bookId));
+      });
+      return { before, ...(await loadBookContent(db, user, p.bookId)) };
     });
-    return { before, ...(await loadBookContent(db, user, p.bookId)) };
   });
 
   /** Rearranges: puts a photo at `position` on page `pageId` of the same spread. */
   app.post<{ Params: { id: string } }>('/api/photos/:id/move', async (req) => {
     const { user, p } = await photoForEdit(req, req.params.id);
     const v = parse(z.object({ pageId: z.string().uuid(), position: z.number().int().min(0).max(50) }), req.body);
-    const pages = await loadPages(db, p.bookId);
-    const toIdx = pages.findIndex((pg) => pg.id === v.pageId);
-    const fromIdx = pages.findIndex((pg) => pg.photos.some((x) => x.id === p.id));
-    if (toIdx < 0 || fromIdx < 0 || Math.abs(toIdx - fromIdx) > 1) throw badRequest('Photos can only move within the spread they are on');
-    const r = movePhoto(pages, p.id, toIdx, v.position);
-    if (r.kind === 'invalid') throw badRequest("That page doesn't hold photos");
-    if (r.kind !== 'moved') return { kind: r.kind, ...(await loadBookContent(db, user, p.bookId)) };
-    const before = snapshot(pages, r.pages);
-    await db.transaction(async (tx) => {
-      await persistLayout(tx as unknown as Db, p.bookId, r.pages);
-      await tx.update(s.books).set({ updatedAt: new Date() }).where(eq(s.books.id, p.bookId));
+    return withLock(p.bookId, async () => {
+      const pages = await loadPages(db, p.bookId);
+      const toIdx = pages.findIndex((pg) => pg.id === v.pageId);
+      const fromIdx = pages.findIndex((pg) => pg.photos.some((x) => x.id === p.id));
+      if (toIdx < 0 || fromIdx < 0 || Math.abs(toIdx - fromIdx) > 1) throw badRequest('Photos can only move within the spread they are on');
+      const r = movePhoto(pages, p.id, toIdx, v.position);
+      if (r.kind === 'invalid') throw badRequest("That page doesn't hold photos");
+      if (r.kind !== 'moved') return { kind: r.kind, ...(await loadBookContent(db, user, p.bookId)) };
+      const before = snapshot(pages, r.pages);
+      await db.transaction(async (tx) => {
+        await persistLayout(tx as unknown as Db, p.bookId, r.pages);
+        await tx.update(s.books).set({ updatedAt: new Date() }).where(eq(s.books.id, p.bookId));
+      });
+      return { kind: r.kind, before, ...(await loadBookContent(db, user, p.bookId)) };
     });
-    return { kind: r.kind, before, ...(await loadBookContent(db, user, p.bookId)) };
   });
 
   /**
@@ -275,43 +290,72 @@ export async function photoRoutes(app: FastifyInstance) {
     const user = requireUser(req);
     const book = await requireEdit(db, user, req.params.id);
     const v = parse(z.object({ photoIds: z.array(z.string().uuid()).min(1).max(MONTH_CAPACITY), pageId: z.string().uuid() }), req.body);
-    const ids = [...new Set(v.photoIds)];
-    let pages = await loadPages(db, book.id);
-    const start = pages.findIndex((pg) => pg.id === v.pageId);
-    if (pages[start]?.layout !== 'summaryL' && pages[start]?.layout !== 'monthL') throw badRequest("That isn't a chapter in this book");
-    const pageOf = new Map(pages.flatMap((pg, i) => pg.photos.map((p) => [p.id, i] as const)));
-    if (ids.some((id) => !pageOf.has(id))) throw badRequest('Some of those photos are not in this book');
-    const span = chapterSpan(pages, start);
-    const adding = ids.filter((id) => !span.includes(pageOf.get(id)!)).length;
-    const name = chapterList(pages).find((c) => c.idx === start)?.name ?? 'That chapter';
-    const full = () => badRequest(`${name} has room for ${chapterRoom(pages, start)} more photo${chapterRoom(pages, start) === 1 ? '' : 's'}.`);
-    const grown = await growChapter(db, book.id, pages, start, adding);
-    if (!grown) throw full();
-    pages = grown;
-    const r = moveManyToChapter(pages, ids, start);
-    if (r.kind === 'invalid') throw badRequest("That isn't a chapter in this book");
-    if (r.kind === 'full') throw full();
-    if (r.kind === 'same') return { kind: r.kind, moved: 0, ...(await loadBookContent(db, user, book.id)) };
-    const before = snapshot(pages, r.pages);
-    await db.transaction(async (tx) => {
-      await persistLayout(tx as unknown as Db, book.id, r.pages);
-      await tx.update(s.books).set({ updatedAt: new Date() }).where(eq(s.books.id, book.id));
+    return withLock(book.id, async () => {
+      const ids = [...new Set(v.photoIds)];
+      let pages = await loadPages(db, book.id);
+      const start = pages.findIndex((pg) => pg.id === v.pageId);
+      if (pages[start]?.layout !== 'summaryL' && pages[start]?.layout !== 'monthL') throw badRequest("That isn't a chapter in this book");
+      const pageOf = new Map(pages.flatMap((pg, i) => pg.photos.map((p) => [p.id, i] as const)));
+      if (ids.some((id) => !pageOf.has(id))) throw badRequest('Some of those photos are not in this book');
+      const span = chapterSpan(pages, start);
+      const adding = ids.filter((id) => !span.includes(pageOf.get(id)!)).length;
+      const name = chapterList(pages).find((c) => c.idx === start)?.name ?? 'That chapter';
+      const full = () => {
+        const room = chapterRoom(pages, start);
+        return badRequest(room ? `${name} has room for ${room} more photo${room === 1 ? '' : 's'}.` : `${name} is full.`);
+      };
+      const grown = await growChapter(db, book.id, pages, start, adding);
+      if (!grown) throw full();
+      pages = grown;
+      const r = moveManyToChapter(pages, ids, start);
+      if (r.kind === 'invalid') throw badRequest("That isn't a chapter in this book");
+      if (r.kind === 'full') throw full();
+      if (r.kind === 'same') return { kind: r.kind, moved: 0, ...(await loadBookContent(db, user, book.id)) };
+      const before = snapshot(pages, r.pages);
+      await db.transaction(async (tx) => {
+        await persistLayout(tx as unknown as Db, book.id, r.pages);
+        await tx.update(s.books).set({ updatedAt: new Date() }).where(eq(s.books.id, book.id));
+      });
+      return { kind: r.kind, moved: r.moved, before, ...(await loadBookContent(db, user, book.id)) };
     });
-    return { kind: r.kind, moved: r.moved, before, ...(await loadBookContent(db, user, book.id)) };
   });
 
   app.delete<{ Params: { id: string } }>('/api/photos/:id', async (req) => {
     const { p } = await photoForEdit(req, req.params.id);
-    await db.update(s.photos).set({ deletedAt: new Date() }).where(eq(s.photos.id, p.id));
-    await touch(db, p.bookId);
-    return { ok: true };
+    return withLock(p.bookId, async () => {
+      await db.update(s.photos).set({ deletedAt: new Date() }).where(eq(s.photos.id, p.id));
+      // A month closes up behind a removed photo, so no empty pages are left inside it.
+      const pages = await loadPages(db, p.bookId);
+      const idx = pages.findIndex((pg) => pg.id === p.pageId);
+      const start = idx >= 0 ? chapterStart(pages, idx) : null;
+      if (start != null) await persistLayout(db, p.bookId, compactMonth(pages, start));
+      await touch(db, p.bookId);
+      return { ok: true };
+    });
   });
 
+  /** Undo of a delete: back to its old place if there's room, else elsewhere in its chapter, else refused. */
   app.post<{ Params: { id: string } }>('/api/photos/:id/restore', async (req) => {
     const { p } = await photoForEdit(req, req.params.id, { withDeleted: true });
-    await db.update(s.photos).set({ deletedAt: null }).where(eq(s.photos.id, p.id));
-    await touch(db, p.bookId);
-    return { ok: true };
+    return withLock(p.bookId, async () => {
+      if (!p.deletedAt) return { ok: true };
+      let pages = await loadPages(db, p.bookId);
+      let idx = pages.findIndex((pg) => pg.id === p.pageId);
+      let next: PageDto[] | null = null;
+      if (idx >= 0) {
+        const start = chapterStart(pages, idx);
+        if (start != null && pages[start]!.layout === 'monthL') pages = (await growChapter(db, p.bookId, pages, start, 1)) ?? pages;
+        idx = pages.findIndex((pg) => pg.id === p.pageId);
+        next = placeBack(pages, { id: p.id, month: p.month }, idx, p.position);
+        if (!next) throw new HttpError(409, "There's no room to bring that photo back. Remove one from its chapter first.");
+      }
+      await db.transaction(async (tx) => {
+        await tx.update(s.photos).set({ deletedAt: null }).where(eq(s.photos.id, p.id));
+        if (next) await persistLayout(tx as unknown as Db, p.bookId, next);
+        await tx.update(s.books).set({ updatedAt: new Date() }).where(eq(s.books.id, p.bookId));
+      });
+      return { ok: true };
+    });
   });
 
   /** Undo for layout changes: puts photos back where a snapshot says, reviving any that were removed. */
@@ -325,13 +369,29 @@ export async function photoRoutes(app: FastifyInstance) {
     const ids = photos.map((x) => x.id);
     const owned = ids.length ? await db.select({ id: s.photos.id }).from(s.photos).where(and(inArray(s.photos.id, ids), eq(s.photos.bookId, book.id))) : [];
     if (owned.length !== ids.length) throw badRequest('Some photos are not in this book');
-    const pageIds = new Set((await db.select({ id: s.pages.id }).from(s.pages).where(eq(s.pages.bookId, book.id))).map((x) => x.id));
-    if (photos.some((x) => x.pageId && !pageIds.has(x.pageId))) throw badRequest('Some pages are not in this book');
-    await db.transaction(async (tx) => {
-      for (const x of photos) await tx.update(s.photos).set({ pageId: x.pageId, position: x.position, month: x.month, deletedAt: null }).where(eq(s.photos.id, x.id));
-      await tx.update(s.books).set({ updatedAt: new Date() }).where(eq(s.books.id, book.id));
+    return withLock(book.id, async () => {
+      // Apply the snapshot to the book as it is now, then check no page ends up overfull:
+      // someone may have filled the space since.
+      const pages = await loadPages(db, book.id);
+      const byId = new Map(pages.map((pg) => [pg.id, pg]));
+      if (photos.some((x) => x.pageId && !byId.has(x.pageId))) throw badRequest('Some pages are not in this book');
+      const undoing = new Set(ids);
+      const next = pages.map((pg) => ({ ...pg, photos: pg.photos.filter((ph) => !undoing.has(ph.id)) }));
+      const at = new Map(next.map((pg) => [pg.id, pg]));
+      for (const x of [...photos].sort((a, b) => a.position - b.position)) {
+        if (!x.pageId) continue;
+        const pg = at.get(x.pageId)!;
+        pg.photos.splice(Math.min(x.position, pg.photos.length), 0, { id: x.id, month: x.month } as (typeof pg.photos)[number]);
+      }
+      if (!withinCapacity(next)) throw new HttpError(409, "Too much has changed since then, so that can't be undone.");
+      await db.transaction(async (tx) => {
+        if (ids.length) await tx.update(s.photos).set({ deletedAt: null }).where(inArray(s.photos.id, ids));
+        for (const x of photos) if (!x.pageId) await tx.update(s.photos).set({ pageId: null, position: x.position, month: x.month }).where(eq(s.photos.id, x.id));
+        await persistLayout(tx as unknown as Db, book.id, next);
+        await tx.update(s.books).set({ updatedAt: new Date() }).where(eq(s.books.id, book.id));
+      });
+      return loadBookContent(db, user, book.id);
     });
-    return loadBookContent(db, user, book.id);
   });
 
   app.patch<{ Params: { id: string } }>('/api/pages/:id', async (req) => {

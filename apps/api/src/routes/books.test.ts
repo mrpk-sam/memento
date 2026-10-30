@@ -160,4 +160,16 @@ describe('deleting books', () => {
     const people2 = (await api(admin, 'GET', '/api/people')).json().people;
     expect(people2.find((p: { name: string }) => p.name === 'Elena')).toMatchObject({ householdId: rivera.householdId, access: 'household_admin' });
   });
+
+  it("Undo leaves alone anyone who was moved to another household since", async () => {
+    const lib = await library();
+    const rivera = lib.books.find((b) => b.owner === 'Marco & Elena')!;
+    const other = lib.books.find((b) => b.kind === 'main' && b.householdId !== rivera.householdId)!;
+    const res = await api(admin, 'DELETE', `/api/books/${rivera.id}`);
+    const elena = (await api(admin, 'GET', '/api/people')).json().people.find((p: { name: string }) => p.name === 'Elena');
+    expect((await api(admin, 'PATCH', `/api/people/${elena.id}`, { householdId: other.householdId })).statusCode).toBe(200);
+    await api(admin, 'POST', '/api/books/restore', res.json());
+    const after = (await api(admin, 'GET', '/api/people')).json().people.find((p: { name: string }) => p.name === 'Elena');
+    expect(after).toMatchObject({ householdId: other.householdId, access: 'member' });
+  });
 });

@@ -28,9 +28,58 @@ export function spreadsToAdd(pages: P[], start: number, adding: number): number 
   return adding <= room ? 0 : Math.ceil((adding - room) / (2 * capacity({ layout: 'monthMore' })));
 }
 
-/** Photos a chapter can still take. */
+/** Photos a chapter can still take (never below 0). */
 export function chapterRoom(pages: P[], start: number) {
-  return (isMonth(pages, start) ? MONTH_CAPACITY : YEAR_CAPACITY) - countIn(pages, chapterSpan(pages, start));
+  return Math.max(0, (isMonth(pages, start) ? MONTH_CAPACITY : YEAR_CAPACITY) - countIn(pages, chapterSpan(pages, start)));
+}
+
+/**
+ * Closes the gaps in a month chapter: its photos keep their reading order (title page, journal
+ * page, then the extra pages) and refill the pages from the front. Empty extra spreads end up
+ * last, where the hourly cleanup removes them.
+ */
+export function compactMonth<T extends P>(pages: T[], start: number): T[] {
+  if (!isMonth(pages, start)) return pages;
+  const span = chapterSpan(pages, start);
+  const all = span.flatMap((i) => pages[i]!.photos ?? []);
+  const next = pages.slice();
+  let k = 0;
+  for (const i of span) {
+    const take = all.slice(k, k + capacity(pages[i]!));
+    k += take.length;
+    next[i] = { ...pages[i]!, photos: take };
+  }
+  return next;
+}
+
+/** Whether every page holds no more photos than it has slots for. */
+export const withinCapacity = (pages: P[]) => pages.every((pg) => (pg.photos?.length ?? 0) <= capacity(pg));
+
+/**
+ * Where a removed photo goes when it comes back (Undo of a delete): its old page and position
+ * if there's room, otherwise anywhere in its chapter (in month order for a year). Null if the
+ * chapter is full now. A month may need to grow first; see spreadsToAdd.
+ */
+export function placeBack<T extends P>(pages: T[], photo: ModelPhoto, pageIdx: number, position: number): T[] | null {
+  const pg = pages[pageIdx];
+  if (!pg || !capacity(pg)) return null;
+  const yl = yearSpread(pages, pageIdx);
+  if (yl != null) {
+    const all = [...(pages[yl]!.photos ?? []), ...(pages[yl + 1]!.photos ?? [])];
+    if (all.length >= YEAR_CAPACITY) return null;
+    const at = Math.min(all.length, (pageIdx === yl ? 0 : (pages[yl]!.photos ?? []).length) + position);
+    return reflow(pages, yl, [...all.slice(0, at), photo, ...all.slice(at)]);
+  }
+  const have = pg.photos ?? [];
+  if (have.length < capacity(pg)) {
+    const next = pages.slice();
+    next[pageIdx] = { ...pg, photos: [...have.slice(0, position), photo, ...have.slice(position)] };
+    return next;
+  }
+  const start = chapterStart(pages, pageIdx);
+  if (start == null) return null;
+  const r = insertPhotos(pages, chapterSpan(pages, start), [photo]);
+  return r.placed.length ? r.pages : null;
 }
 
 const monthKey = (p: ModelPhoto) => (p.month == null ? 99 : p.month);
@@ -136,7 +185,12 @@ export function moveToChapter<T extends P>(pages: T[], photoId: string, chapterI
   let next = pages.slice();
   const yl = yearSpread(pages, fromIdx);
   if (yl != null) next = reflow(next, yl, [...(pages[yl]!.photos ?? []), ...(pages[yl + 1]!.photos ?? [])].filter((p) => p.id !== photoId));
-  else next[fromIdx] = { ...from, photos: from.photos!.filter((p) => p.id !== photoId) };
+  else {
+    next[fromIdx] = { ...from, photos: from.photos!.filter((p) => p.id !== photoId) };
+    // A month it leaves closes up, so no empty pages are left inside it.
+    const src = chapterStart(pages, fromIdx);
+    if (src != null) next = compactMonth(next, src);
+  }
 
   if (target.layout === 'summaryL') {
     const all = [...(next[chapterIdx]!.photos ?? []), ...(next[chapterIdx + 1]!.photos ?? [])];

@@ -12,13 +12,17 @@ import { requireEdit } from './content.js';
 
 const SettingsPatch = z
   .object({
-    endpoint: z.string().trim().max(300).refine((v) => v === '' || /^https?:\/\/.+/.test(v), 'The endpoint must start with http:// or https://'),
+    endpoint: z
+      .string()
+      .trim()
+      .max(300)
+      .refine((v) => v === '' || isHttpUrl(v), 'The endpoint must be a web address starting with http:// or https://'),
     /** Plain key in, encrypted at rest. An empty string removes it. */
     key: z.string().trim().max(500),
     model: z.string().trim().max(120),
     vision: z.boolean(),
     voiceStyleId: z.string().uuid(),
-    basePrompt: z.string().max(8000),
+    basePrompt: z.string().trim().min(1, "The base instructions can't be empty. Use Reset to default to start again.").max(8000),
     maxLen: z.number().int().min(30).max(120),
     emoji: z.boolean(),
     auto: z.boolean(),
@@ -101,7 +105,7 @@ export async function aiRoutes(app: FastifyInstance) {
 
   app.patch<{ Params: { id: string } }>('/api/ai/styles/:id', async (req) => {
     requireAdmin(req);
-    const v = parse(z.object({ name: z.string().trim().max(60), prompt: z.string().max(8000) }).partial(), req.body);
+    const v = parse(z.object({ name: z.string().trim().max(60), prompt: z.string().trim().min(1, "A style's prompt can't be empty.").max(8000) }).partial(), req.body);
     const [row] = await db.select().from(s.captionStyles).where(eq(s.captionStyles.id, req.params.id));
     if (!row) throw notFound('That style no longer exists');
     // Built-ins keep their name; their prompt is editable.
@@ -226,4 +230,13 @@ export async function aiRoutes(app: FastifyInstance) {
       throw new HttpError(502, "Couldn't write a caption. Try again in a moment.");
     }
   });
+}
+
+function isHttpUrl(v: string) {
+  try {
+    const u = new URL(v);
+    return (u.protocol === 'http:' || u.protocol === 'https:') && !!u.hostname;
+  } catch {
+    return false;
+  }
 }

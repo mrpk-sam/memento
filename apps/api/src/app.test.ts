@@ -58,3 +58,21 @@ describe('TRUST_PROXY', () => {
     expect(parse('10.0.0.0/8')).toBe('10.0.0.0/8');
   });
 });
+
+describe('errors people can read', () => {
+  it('gives 404 for an id that is not a UUID, and plain sentences for bad input', async () => {
+    const t = await createTestApp();
+    try {
+      const admin = await t.login(ADMIN);
+      const call = (method: string, url: string, payload?: object) => t.app.inject({ method: method as 'GET', url, headers: { cookie: admin }, payload });
+      for (const url of ['/api/photos/abc', '/api/people/abc', '/api/books/abc', '/api/inbox/abc']) expect((await call('PATCH', url, { caption: 'x', name: 'x' })).statusCode).toBe(404);
+      const [household] = (await call('GET', '/api/library')).json().households;
+      const empty = await call('PATCH', `/api/households/${household.id}`, {});
+      expect([empty.statusCode, empty.json().error]).toEqual([400, 'There was nothing to change.']);
+      const long = await call('PATCH', '/api/settings', { familyName: 'x'.repeat(61) });
+      expect(long.json().error).toBe('The family name can be up to 60 characters.');
+    } finally {
+      await t.close();
+    }
+  });
+});

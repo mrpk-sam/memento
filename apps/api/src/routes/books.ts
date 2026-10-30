@@ -1,5 +1,6 @@
+import { createHash } from 'node:crypto';
 import { and, asc, count, eq, gt, inArray, isNull, max, sql } from 'drizzle-orm';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { BOOK_SIZE, HexColor, LIMITS, Pin, Texture, bookName, bookOwnerName, canEditBook, orderBooks } from '@memento/shared';
 import type { Db } from '../db/client.js';
@@ -8,7 +9,7 @@ import { defaultBookPages } from '../lib/book-template.js';
 import { titleTexts } from '../lib/books.js';
 import { HttpError, badRequest, forbidden, notFound, parse } from '../lib/http.js';
 import { hashPin, verifyPin } from '../lib/pin.js';
-import { requireAdmin, requireUser, type SessionUser } from '../lib/session.js';
+import { SESSION_COOKIE, requireAdmin, requireUser, type SessionUser } from '../lib/session.js';
 
 const Width = z.number().int().min(BOOK_SIZE.width.min).max(BOOK_SIZE.width.max);
 const Height = z.number().int().min(280).max(BOOK_SIZE.height.max);
@@ -133,7 +134,9 @@ export async function bookRoutes(app: FastifyInstance) {
 
   app.post<{ Params: { id: string } }>(
     '/api/books/:id/unlock',
-    { config: { rateLimit: { max: 10, timeWindow: '10 minutes', keyGenerator: (req) => `${req.ip}:${(req.params as { id: string }).id}` } } },
+    // Counted per signed-in person (a hash of their session cookie), not per address: a family
+    // shares one home address, and one person's wrong guesses mustn't lock out the others.
+    { config: { rateLimit: { max: 10, timeWindow: '10 minutes', keyGenerator: (req) => `${pinLimitKey(req)}:${(req.params as { id: string }).id}` } } },
     async (req) => {
       const user = requireUser(req);
       const book = await loadBook(req.params.id);
@@ -263,9 +266,16 @@ export async function bookRoutes(app: FastifyInstance) {
     await db.transaction(async (tx) => {
       if (v.householdId) {
         await tx.update(s.households).set({ deletedAt: null }).where(eq(s.households.id, v.householdId));
-        if (v.memberIds.length) await tx.update(s.users).set({ householdId: v.householdId }).where(inArray(s.users.id, v.memberIds));
-        // Only people still in this household and still members get their household admin role back.
-        const admins = v.adminIds.filter((id) => v.memberIds.includes(id));
+        // Only people still without a household come back: anyone moved since stays where they were put.
+        const back = v.memberIds.length
+          ? await tx
+              .update(s.users)
+              .set({ householdId: v.householdId })
+              .where(and(inArray(s.users.id, v.memberIds), isNull(s.users.householdId), isNull(s.users.deletedAt)))
+              .returning({ id: s.users.id })
+          : [];
+        // Of those, the ones who were household admins (and are still plain members) get the role back.
+        const admins = v.adminIds.filter((id) => back.some((b) => b.id === id));
         if (admins.length) {
           await tx
             .update(s.users)
@@ -359,3 +369,8 @@ export async function loadLibrary(db: Db, user: SessionUser) {
   };
 }
 
+/** The PIN rate limit's key: the session (hashed, never kept raw), or the address when signed out. */
+function pinLimitKey(req: FastifyRequest) {
+  const token = req.cookies?.[SESSION_COOKIE];
+  return token ? createHash('sha256').update(token).digest('base64url') : req.ip;
+}

@@ -11,6 +11,7 @@ import { inboxKey, inboxVideoKey, photoKey, photoVideoKey } from '../lib/s3.js';
 import { requireAdmin } from '../lib/session.js';
 import { readUpload, uploadError, uploadKey } from '../lib/uploads.js';
 import { processMedia } from '../lib/videos.js';
+import { withLock } from '../lib/locks.js';
 import { growChapter } from './content.js';
 import { persistLayout } from './photos.js';
 
@@ -118,40 +119,46 @@ export async function inboxRoutes(app: FastifyInstance) {
     if (!it.destBookId || !it.destPageId) throw badRequest('Pick a book and a chapter first');
     const [book] = await db.select().from(s.books).where(and(eq(s.books.id, it.destBookId), isNull(s.books.deletedAt)));
     if (!book) throw badRequest('That book no longer exists');
-    let pages = await loadPages(db, book.id);
-    const idx = pages.findIndex((p) => p.id === it.destPageId);
-    const ch = chapterList(pages).find((c) => c.idx === idx);
-    if (idx < 0 || !ch) throw badRequest('That chapter no longer exists. Pick another one.');
-    if (pages[idx]!.layout === 'monthL') pages = (await growChapter(db, book.id, pages, idx, 1)) ?? pages;
-    const photoId = randomUUID();
-    const r = fileToChapter(pages, idx, { id: photoId, month: null });
-    if (!r.placed.length) throw badRequest(`${ch.name} is full in that book. Pick another chapter.`);
+    // Filing reads the chapter inside the book's lock, and checks the item is still waiting, so a
+    // double click can't file it twice or overfill a page.
+    return withLock(book.id, async () => {
+      const [still] = await db.select({ id: s.inboxItems.id }).from(s.inboxItems).where(and(eq(s.inboxItems.id, it.id), isNull(s.inboxItems.deletedAt)));
+      if (!still) throw notFound('That photo is no longer in the inbox');
+      let pages = await loadPages(db, book.id);
+      const idx = pages.findIndex((p) => p.id === it.destPageId);
+      const ch = chapterList(pages).find((c) => c.idx === idx);
+      if (idx < 0 || !ch) throw badRequest('That chapter no longer exists. Pick another one.');
+      if (pages[idx]!.layout === 'monthL') pages = (await growChapter(db, book.id, pages, idx, 1)) ?? pages;
+      const photoId = randomUUID();
+      const r = fileToChapter(pages, idx, { id: photoId, month: null });
+      if (!r.placed.length) throw badRequest(`${ch.name} is full in that book. Pick another chapter.`);
 
-    await Promise.all([
-      ...(['orig', '1600', '400'] as const).map((v) => storage.copy(inboxKey(it.id, v), photoKey(book.id, photoId, v))),
-      it.videoKey && storage.copy(it.videoKey, photoVideoKey(book.id, photoId)),
-    ]);
-    await db.transaction(async (tx) => {
-      await tx.insert(s.photos).values({
-        id: photoId,
-        bookId: book.id,
-        objectKey: photoKey(book.id, photoId, 'orig'),
-        displayKey: photoKey(book.id, photoId, '1600'),
-        thumbKey: photoKey(book.id, photoId, '400'),
-        width: it.width,
-        height: it.height,
-        videoKey: it.videoKey ? photoVideoKey(book.id, photoId) : null,
-        durationMs: it.durationMs,
-        subject: it.subject,
-        caption: it.caption,
-        uploadedBy: it.uploadedBy,
+      await Promise.all([
+        ...(['orig', '1600', '400'] as const).map((v) => storage.copy(inboxKey(it.id, v), photoKey(book.id, photoId, v))),
+        it.videoKey && storage.copy(it.videoKey, photoVideoKey(book.id, photoId)),
+      ]);
+      await db.transaction(async (tx) => {
+        await tx.insert(s.photos).values({
+          id: photoId,
+          bookId: book.id,
+          objectKey: photoKey(book.id, photoId, 'orig'),
+          displayKey: photoKey(book.id, photoId, '1600'),
+          thumbKey: photoKey(book.id, photoId, '400'),
+          width: it.width,
+          height: it.height,
+          videoKey: it.videoKey ? photoVideoKey(book.id, photoId) : null,
+          durationMs: it.durationMs,
+          subject: it.subject,
+          caption: it.caption,
+          uploadedBy: it.uploadedBy,
+        });
+        await persistLayout(tx as never, book.id, r.pages);
+        await tx.update(s.inboxItems).set({ deletedAt: new Date() }).where(eq(s.inboxItems.id, it.id));
+        await tx.update(s.books).set({ updatedAt: new Date() }).where(eq(s.books.id, book.id));
       });
-      await persistLayout(tx as never, book.id, r.pages);
-      await tx.update(s.inboxItems).set({ deletedAt: new Date() }).where(eq(s.inboxItems.id, it.id));
-      await tx.update(s.books).set({ updatedAt: new Date() }).where(eq(s.books.id, book.id));
+      const hh = await db.select().from(s.households).where(eq(s.households.id, book.householdId));
+      return { bookId: book.id, pageIdx: idx, chapter: ch.name, owner: bookOwnerName(book, hh[0]) };
     });
-    const hh = await db.select().from(s.households).where(eq(s.households.id, book.householdId));
-    return { bookId: book.id, pageIdx: idx, chapter: ch.name, owner: bookOwnerName(book, hh[0]) };
   });
 
   app.delete<{ Params: { id: string } }>('/api/inbox/:id', async (req) => {
