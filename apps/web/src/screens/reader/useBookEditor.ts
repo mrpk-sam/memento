@@ -198,15 +198,10 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
       if (!c) return;
       const local = placeMonth(c.pages, photoId, month);
       if (local) setPages(() => local.pages as PageDto[]);
-      const res = await save(() => api<BookContent & { clash: { id: string; caption: string } | null; before: LayoutEntry[] }>(`/photos/${photoId}/month`, { body: { month } }));
+      const res = await save(() => api<BookContent>(`/photos/${photoId}/month`, { body: { month } }));
       if (!res) return;
       setContent(res);
-      if (res.clash) {
-        const m = MONTHS[month!]!;
-        toast(`${m} already had a photo${res.clash.caption ? ` (“${res.clash.caption}”)` : ''}. Each month holds one photo, so it's been replaced with this one.`, 'Undo', () =>
-          void save(async () => setContent(await api<BookContent>(`/books/${bookId}/layout`, { method: 'PUT', body: { photos: res.before } }))),
-        );
-      } else toast(month == null ? 'Photo no longer tied to a month' : `Moved to ${MONTHS[month]}`);
+      toast(month == null ? 'Photo no longer tied to a month' : `Moved to ${MONTHS[month]}`);
     },
 
     /** Rearranges a photo within its spread. Shows at once; month order wins on year spreads. */
@@ -265,7 +260,7 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
       const temp = files.map((f, i) => ({ id: `tmp-${Date.now()}-${i}`, month: null, file: f }));
       const probe = placeOnSpread(c.pages, L, { single, side }, temp);
       if (probe.kind === 'no-slots') return toast('This spread has no photo slots. Turn to a year or month first.');
-      if (probe.kind === 'year-full') return toast('This year is full. Remove a photo or change a month to replace one.');
+      if (probe.kind === 'year-full') return toast('This year is full. Remove a photo, or add more to a month chapter.');
       // A browser can't show a video file as an image, so videos wait as a blank tile until their poster arrives.
       const urls = new Map(temp.flatMap((t) => (isVideoFile(t.file) ? [] : [[t.id, URL.createObjectURL(t.file)] as const])));
       const toDto = (p: { id: string; month: number | null }): PhotoDto => {

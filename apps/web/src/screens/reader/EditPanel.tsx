@@ -317,7 +317,6 @@ export function EditPanel({ content, themes, L, single, goTo, selPhoto, setSelPh
             (pages[i]?.photos ?? []).map((p) => {
               const sel = selPhoto === p.id;
               const yl = yearSpread(pages, i);
-              const taken = yl == null ? new Set<number | null>() : new Set([...pages[yl]!.photos, ...pages[yl + 1]!.photos].filter((x) => x.id !== p.id).map((x) => x.month));
               const busy = editor.loading.has(p.id);
               return (
                 <div
@@ -347,7 +346,7 @@ export function EditPanel({ content, themes, L, single, goTo, selPhoto, setSelPh
                         >
                           <option value="">No month</option>
                           {MONTHS.map((n, k) => (
-                            <option key={k} value={k}>{taken.has(k) ? `${n} (replaces photo)` : n}</option>
+                            <option key={k} value={k}>{n}</option>
                           ))}
                         </select>
                       </label>

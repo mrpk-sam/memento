@@ -53,14 +53,18 @@ describe('setMonth', () => {
     const r = setMonth(pages, 'c', 2)!;
     expect(ids(r.pages, 4)).toEqual(['a', 'c', 'b']);
     expect(months(r.pages, 4)).toEqual([0, 2, 4]);
-    expect(r.clash).toBeNull();
   });
 
-  it('replaces the photo that already held that month and reports it for Undo', () => {
-    const pages = book([ph('a', 0), ph('b', 4), ph('c', null)]);
-    const r = setMonth(pages, 'c', 4)!;
-    expect(r.clash).toEqual(ph('b', 4));
-    expect(ids(r.pages, 4)).toEqual(['a', 'c']);
+  it('adds to a month that already has photos, after them, and removes nothing', () => {
+    const pages = book([ph('a', 0), ph('b', 4), ph('c', 4), ph('d', null)]);
+    const r = setMonth(pages, 'd', 4)!;
+    expect(ids(r.pages, 4)).toEqual(['a', 'b', 'c', 'd']);
+    expect(months(r.pages, 4)).toEqual([0, 4, 4, 4]);
+  });
+
+  it('puts a photo moved from an earlier month at the end of its new month', () => {
+    const r = setMonth(book([ph('a', 0), ph('b', 4), ph('c', 4)]), 'a', 4)!;
+    expect(ids(r.pages, 4)).toEqual(['b', 'c', 'a']);
   });
 
   it('clears the month when set to none, moving the photo to the end', () => {

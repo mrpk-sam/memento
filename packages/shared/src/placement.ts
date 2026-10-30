@@ -4,7 +4,7 @@ import { chapters, capacity, yearSpread, type ModelPage, type ModelPhoto } from 
 // insertPhotos() and uploadToSpread(). Pure: they return new page arrays.
 // The API runs them on DB state; the web runs them for instant feedback.
 
-/** A year summary spread holds 6 + 9 photos. Each month owns at most one. */
+/** A year summary spread holds 6 + 9 photos, in month order. A month can hold any number of them. */
 export const YEAR_CAPACITY = 15;
 
 type P = ModelPage & { photos?: ModelPhoto[] };
@@ -20,21 +20,18 @@ export function reflow<T extends P>(pages: T[], yl: number, all: ModelPhoto[]): 
   return next;
 }
 
-export interface SetMonthResult<T> {
-  pages: T[];
-  /** The photo that already had this month and was removed to make room (Undo brings it back). */
-  clash: ModelPhoto | null;
-}
-
-/** Ties a photo in a year spread to a month (or none). A month holds one photo, so a clash is replaced. */
-export function setMonth<T extends P>(pages: T[], photoId: string, month: number | null): SetMonthResult<T> | null {
+/**
+ * Ties a photo in a year spread to a month (or none). It joins the end of that month's
+ * photos, so a month fills in the order photos are added. Nothing is ever removed.
+ */
+export function setMonth<T extends P>(pages: T[], photoId: string, month: number | null): { pages: T[] } | null {
   const i = pages.findIndex((pg) => pg.photos?.some((p) => p.id === photoId));
   const yl = yearSpread(pages, i);
   if (yl == null) return null;
-  let all = [...(pages[yl]!.photos ?? []), ...(pages[yl + 1]!.photos ?? [])];
-  const clash = month != null ? (all.find((p) => p.id !== photoId && p.month === month) ?? null) : null;
-  all = all.filter((p) => p !== clash).map((p) => (p.id === photoId ? { ...p, month } : p));
-  return { pages: reflow(pages, yl, all), clash };
+  const all = [...(pages[yl]!.photos ?? []), ...(pages[yl + 1]!.photos ?? [])];
+  const photo = all.find((p) => p.id === photoId)!;
+  // Moved to the end first: the sort is stable, so this puts it after the month's other photos.
+  return { pages: reflow(pages, yl, [...all.filter((p) => p.id !== photoId), { ...photo, month }]) };
 }
 
 export interface InsertResult<T> {

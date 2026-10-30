@@ -128,7 +128,7 @@ export async function photoRoutes(app: FastifyInstance) {
     // Check for room before doing any image work.
     const probe = placeOnSpread(pages, v.L, v, v.uploads.map((u) => ({ id: u.id, month: null })));
     if (probe.kind === 'no-slots') throw badRequest('This spread has no photo slots. Turn to a year or month first.');
-    if (probe.kind === 'year-full') throw badRequest('This year is full. Remove a photo or change a month to replace one.');
+    if (probe.kind === 'year-full') throw badRequest('This year is full. Remove a photo, or add more to a month chapter.');
 
     const { ok, skipped } = await readUploads(user.id, v.uploads);
     const fresh = ok.map((x) => ({ ...x, photoId: randomUUID() }));
@@ -227,7 +227,7 @@ export async function photoRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  /** Ties a year-spread photo to a month (or none). A month holds one photo, so a clash is removed. */
+  /** Ties a year-spread photo to a month (or none). It joins that month's other photos. */
   app.post<{ Params: { id: string } }>('/api/photos/:id/month', async (req) => {
     const { user, p } = await photoForEdit(req, req.params.id);
     const { month } = parse(z.object({ month: Month.nullable() }), req.body);
@@ -235,13 +235,11 @@ export async function photoRoutes(app: FastifyInstance) {
     const r = setMonth(pages, p.id, month);
     if (!r) throw badRequest("Only photos in a year's summary have a month");
     const before = snapshot(pages, r.pages);
-    const clash = r.clash ? pages.flatMap((pg) => pg.photos).find((x) => x.id === r.clash!.id) : undefined;
     await db.transaction(async (tx) => {
-      if (clash) await tx.update(s.photos).set({ deletedAt: new Date() }).where(eq(s.photos.id, clash.id));
       await persistLayout(tx as unknown as Db, p.bookId, r.pages);
       await tx.update(s.books).set({ updatedAt: new Date() }).where(eq(s.books.id, p.bookId));
     });
-    return { clash: clash ? { id: clash.id, caption: clash.caption } : null, before, ...(await loadBookContent(db, user, p.bookId)) };
+    return { before, ...(await loadBookContent(db, user, p.bookId)) };
   });
 
   /** Rearranges: puts a photo at `position` on page `pageId` of the same spread. */

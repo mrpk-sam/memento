@@ -167,7 +167,7 @@ describe('editing photos', () => {
     expect((await content()).pages[4]!.photos[0]!.caption).toBe('Salt air, sandy toes');
   });
 
-  it('moves a photo to a month, replaces a clash, and Undo restores the old layout', async () => {
+  it('adds photos to a month that already has one, keeps them all, and Undo restores the old layout', async () => {
     // Uploads start with no month, so give the first photo January.
     const first = (await content()).pages[4]!.photos[0]!;
     await api(admin, 'POST', `/api/photos/${first.id}/month`, { month: 0 });
@@ -175,8 +175,9 @@ describe('editing photos', () => {
     const [a, b] = (await content()).pages[4]!.photos;
     expect(a!.month).toBe(0);
     const res = await api(admin, 'POST', `/api/photos/${b!.id}/month`, { month: 0 });
-    expect(res.json().clash.id).toBe(a!.id);
-    expect(res.json().pages[4].photos.map((p: { id: string }) => p.id)).not.toContain(a!.id);
+    const after = res.json().pages[4].photos as { id: string; month: number | null }[];
+    expect(after.slice(0, 2).map((p) => [p.id, p.month])).toEqual([[a!.id, 0], [b!.id, 0]]);
+    expect(after).toHaveLength(before.length);
     await api(admin, 'PUT', `/api/books/${bookId}/layout`, { photos: res.json().before });
     expect((await content()).pages[4]!.photos.map((p) => [p.id, p.month])).toEqual(before);
   });
