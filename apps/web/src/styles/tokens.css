@@ -80,3 +80,10 @@ body { transition: background .45s; }
 @keyframes kfadeout { from { opacity: 1; } to { opacity: 0; } }
 @keyframes kpulse { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
 @keyframes kspin { to { transform: rotate(360deg); } }
+
+/* Touch screens: fields of 16px or more stop iPhones zooming in when one is focused. */
+@media (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  select,
+  textarea { font-size: max(16px, 1em) !important; }
+}

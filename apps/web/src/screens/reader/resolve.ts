@@ -16,6 +16,8 @@ export interface RPhoto {
   /** Set for a video: its MP4. src and full are then its poster frame. */
   video?: string | null;
   durationMs?: number | null;
+  width?: number | null;
+  height?: number | null;
 }
 
 export interface Sticker {
@@ -99,7 +101,7 @@ export const blankPage = (): RPage => ({
 export const hueOf = (id: string) => PHOTO_HUES[hash(id) % PHOTO_HUES.length]!;
 
 export function toRPhoto(p: PhotoDto): RPhoto {
-  return { id: p.id, subject: p.subject, caption: p.caption, src: p.thumbUrl, full: p.displayUrl ?? p.thumbUrl, hue: hueOf(p.id), month: p.month, video: p.videoUrl, durationMs: p.durationMs };
+  return { id: p.id, subject: p.subject, caption: p.caption, src: p.thumbUrl, full: p.displayUrl ?? p.thumbUrl, hue: hueOf(p.id), month: p.month, video: p.videoUrl, durationMs: p.durationMs, width: p.width, height: p.height };
 }
 
 export const themeOf = (themes: Theme[], id: string) => themes.find((t) => t.id === id) ?? themes[0] ?? CREAM;

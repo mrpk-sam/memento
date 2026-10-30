@@ -44,7 +44,8 @@ export function Reader({ edit: editSlot, loading }: { edit?: EditSlot; loading?:
   const bookQ = useBook(id);
   const themes = useThemes().data;
   const data = bookQ.data;
-  const single = vw < 820;
+  // One page at a time on narrow screens, and on a phone held sideways (two pages would be unreadable).
+  const single = vw < 820 || (vh < 500 && vw < 1000);
   const online = useOnline();
   const startEditing = params.get('edit') === '1';
 
@@ -77,6 +78,15 @@ export function Reader({ edit: editSlot, loading }: { edit?: EditSlot; loading?:
   useEffect(() => {
     if (!data || opened.current) return;
     opened.current = true;
+    // A reload (or Back, then Forward) comes back to the page it was on, without the cover opening again.
+    const p = Number(params.get('p'));
+    if (!startEditing && params.has('p') && Number.isInteger(p) && p > 0 && p < data.pages.length) {
+      setPos(single ? p : p - (p % 2));
+      setCoverDeg(-180);
+      setCoverShift(false);
+      setCoverOn(false);
+      return;
+    }
     if (startEditing) {
       // "Edit pages" from the Desk jumps to the first year; the inbox's "Open" passes ?pos.
       const want = Number(params.get('pos'));
@@ -116,6 +126,16 @@ export function Reader({ edit: editSlot, loading }: { edit?: EditSlot; loading?:
   );
   const n = data?.pages.length ?? 0;
   const L = single ? pos : pos - (pos % 2);
+  // The page goes in the address (replaced, not pushed), so a reload comes back to it.
+  useEffect(() => {
+    if (!data || coverOn) return;
+    const q = new URLSearchParams(window.location.search);
+    if (q.get('p') === String(pos)) return;
+    if (pos > 0) q.set('p', String(pos));
+    else q.delete('p');
+    const query = q.toString();
+    history.replaceState(history.state, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
+  }, [pos, coverOn, data]);
   const max = single ? n - 1 : n - 2;
 
   const goTo = useCallback(
@@ -193,15 +213,40 @@ export function Reader({ edit: editSlot, loading }: { edit?: EditSlot; loading?:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx, L, single]);
 
+  // An open photo has its own history entry, so the phone's Back button closes it and stays in the book.
+  const lbHistory = useRef(false);
   const openLightbox = useCallback(
     (pid: string, rect: Rect) => {
       if (flip || lb) return;
       setLb({ pid, from: lbFrom(rect, vw, vh), anim: false, open: false });
       requestAnimationFrame(() => requestAnimationFrame(() => setLb((x) => (x ? { ...x, anim: true, open: true } : x))));
+      if (!lbHistory.current) {
+        history.pushState(history.state, '');
+        lbHistory.current = true;
+      }
     },
     [flip, lb, vw, vh],
   );
+  /** Closing by the ✕, Escape or the backdrop takes back the history entry the photo added. */
   const closeLightbox = useCallback(() => {
+    if (lbHistory.current) {
+      lbHistory.current = false;
+      history.back();
+    }
+    hideLightbox();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vw, vh]);
+  useEffect(() => {
+    const onPop = () => {
+      if (!lbHistory.current) return;
+      lbHistory.current = false;
+      hideLightbox();
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vw, vh]);
+  const hideLightbox = () => {
     setLb((cur) => {
       if (!cur || cur.closing) return cur;
       const el = rootRef.current?.querySelector(`[data-pid="${cur.pid}"]`);
@@ -213,8 +258,7 @@ export function Reader({ edit: editSlot, loading }: { edit?: EditSlot; loading?:
       return { ...cur, from, open: false, closing: true };
     });
     later('lb', 460, () => setLb(null));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vw, vh]);
+  };
   const stepLightbox = useCallback(
     (d: number) => {
       setLb((cur) => {
@@ -417,11 +461,26 @@ export function Reader({ edit: editSlot, loading }: { edit?: EditSlot; loading?:
 
   const startPhotoDrag = (e: React.PointerEvent<HTMLDivElement>, pid: string) => {
     if (!editSlot?.movePhoto || e.button !== 0) return;
-    e.stopPropagation(); // not a page swipe
+    // A mouse drags at once. A finger presses and holds first (like a phone's home screen), so a
+    // quick swipe that starts on a photo still turns the page.
+    const touch = e.pointerType !== 'mouse';
+    if (!touch) e.stopPropagation(); // not a page swipe
     const r = e.currentTarget.getBoundingClientRect();
-    const st = { sx: e.clientX, sy: e.clientY, active: false, hint: null as ReturnType<typeof hitTest> };
+    const st = { sx: e.clientX, sy: e.clientY, armed: !touch, active: false, hint: null as ReturnType<typeof hitTest> };
     const src = e.currentTarget.querySelector('img')?.getAttribute('src') ?? null;
+    const hold = touch
+      ? setTimeout(() => {
+          st.armed = true;
+          swipe.current = null; // this touch is a drag now, not a swipe
+          navigator.vibrate?.(10);
+        }, 350)
+      : undefined;
     const move = (ev: PointerEvent) => {
+      if (!st.armed) {
+        // Moved before the hold: it's a swipe or a scroll, so let it be.
+        if (Math.hypot(ev.clientX - st.sx, ev.clientY - st.sy) > 8) stop();
+        return;
+      }
       if (!st.active) {
         if (Math.hypot(ev.clientX - st.sx, ev.clientY - st.sy) < 6) return;
         st.active = true;
@@ -431,10 +490,14 @@ export function Reader({ edit: editSlot, loading }: { edit?: EditSlot; loading?:
       setPhotoDrag({ pid, x: ev.clientX, y: ev.clientY, w: r.width, h: r.height, src });
       setDropHint(st.hint);
     };
-    const end = () => {
+    const stop = () => {
+      clearTimeout(hold);
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', end);
       window.removeEventListener('pointercancel', end);
+    };
+    const end = () => {
+      stop();
       if (st.active && st.hint) editSlot.movePhoto!(pid, st.hint.pageIdx, st.hint.position);
       setPhotoDrag(null);
       setDropHint(null);

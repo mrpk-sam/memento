@@ -5,7 +5,7 @@ import { useViewport } from '../../lib/useViewport';
 import s from './PinModal.module.css';
 
 interface Props {
-  book: { id: string; title: string; texture: string; color: string };
+  book: { id: string; title: string; texture: string; color: string; hasPin: boolean };
   onClose: () => void;
   /** Called once the unlock animation has played, as the modal fades out. */
   onUnlocked: () => void;
@@ -54,7 +54,10 @@ export function PinModal({ book, onClose, onUnlocked }: Props) {
     } catch (e) {
       setPin('');
       setShake((n) => n + 1);
-      setError(e instanceof ApiError ? e.message : "That's not it. Try again.");
+      // Say how many tries are left, so the lockout doesn't come as a surprise.
+      const left = e instanceof ApiError && typeof e.data.remaining === 'number' ? e.data.remaining : null;
+      const base = e instanceof ApiError ? e.message : "That's not it. Try again.";
+      setError(left != null && left < 5 ? `${base} ${left} ${left === 1 ? 'try' : 'tries'} left.` : base);
       ref.current?.focus();
     } finally {
       setBusy(false);
@@ -94,29 +97,39 @@ export function PinModal({ book, onClose, onUnlocked }: Props) {
         </div>
         <div>
           <div className={s.title}>Edit {book.title}</div>
-          <div className={s.sub}>Anyone can read this book. Enter the 4-digit family PIN to make changes.</div>
-          <div className={s.boxes} onClick={() => ref.current?.focus()}>
-            {[0, 1, 2, 3].map((i) => {
-              const n = pin.length;
-              const border = success ? '#5E8B5A' : error ? '#C0443A' : i === n ? 'var(--accent)' : 'var(--line)';
-              return (
-                <div key={i} className={s.box} style={{ borderColor: border, transform: `scale(${!success && i === n ? 1.04 : 1})` }}>
-                  <span className={s.dot} style={{ opacity: success || i < n ? 1 : 0 }} />
-                </div>
-              );
-            })}
-            <input
-              ref={ref}
-              value={pin}
-              onChange={(e) => void onChange(e.target.value)}
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={4}
-              aria-label="PIN"
-              className={s.hidden}
-            />
-          </div>
-          <div className={s.msg} style={{ color: msgColor }}>{msg}</div>
+          {!book.hasPin ? (
+            <div className={s.sub}>Anyone can read this book, but no one can edit it yet. Ask the family admin to set a PIN for it.</div>
+          ) : (
+            <>
+              <div className={s.sub}>Anyone can read this book. Enter the 4-digit family PIN to make changes.</div>
+              <div className={s.boxes} onClick={() => ref.current?.focus()}>
+                {[0, 1, 2, 3].map((i) => {
+                  const n = pin.length;
+                  const border = success ? '#5E8B5A' : error ? '#C0443A' : i === n ? 'var(--accent)' : 'var(--line)';
+                  return (
+                    <div key={i} className={s.box} style={{ borderColor: border, transform: `scale(${!success && i === n ? 1.04 : 1})` }}>
+                      <span className={s.dot} style={{ opacity: success || i < n ? 1 : 0 }} />
+                    </div>
+                  );
+                })}
+                <input
+                  ref={ref}
+                  value={pin}
+                  onChange={(e) => void onChange(e.target.value)}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  aria-label="PIN"
+                  className={s.hidden}
+                />
+              </div>
+              <div className={s.msg} style={{ color: msgColor }}>{msg}</div>
+            </>
+          )}
+          {!success && (
+            <button type="button" className={s.cancel} onClick={onClose}>
+              {book.hasPin ? 'Cancel' : 'Close'}
+            </button>
+          )}
         </div>
       </div>
     </div>

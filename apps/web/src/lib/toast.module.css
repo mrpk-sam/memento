@@ -5,3 +5,7 @@
   box-shadow: 0 20px 40px -18px rgba(0,0,0,.55); animation: kpop .35s var(--spring) both; max-width: 90vw;
 }
 .action { border: 0; background: none; color: var(--accent); font: 600 14px/1 var(--font-ui); cursor: pointer; padding: 4px 2px; }
+
+@media (pointer: coarse) {
+  .action { padding: 12px 10px; margin: -8px -4px; }
+}

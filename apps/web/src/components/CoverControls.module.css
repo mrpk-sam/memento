@@ -9,3 +9,12 @@
 .sizeRight { display: flex; align-items: center; gap: 6px; }
 .num { width: 58px; height: 26px; border: 1px solid var(--line); border-radius: 6px; background: var(--field); color: var(--ink); padding: 0 6px; font: 600 12px/1 var(--font-ui); font-variant-numeric: tabular-nums; text-align: right; }
 .range { width: 100%; accent-color: var(--accent); }
+
+/* Narrow screens: Height and Thickness stack, so the number boxes don't run into the labels. */
+@media (max-width: 460px) {
+  .sizes { grid-template-columns: minmax(0,1fr); }
+}
+@media (pointer: coarse) {
+  .num { height: 36px; }
+  .swatch { min-width: 32px; min-height: 32px; }
+}

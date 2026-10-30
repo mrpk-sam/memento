@@ -58,3 +58,13 @@
 .monthRow { display: flex; align-items: center; gap: 8px; font: 500 12px/1 var(--font-ui); color: var(--ink2); }
 .monthRow select { flex: 1; min-width: 0; height: 30px; border-radius: 8px; border: 1px solid var(--line); background: var(--field); color: var(--ink); padding: 0 8px; font: 500 13px/1 var(--font-ui); cursor: pointer; }
 .writing { height: 44px; border-radius: 8px; background: var(--surface2); display: flex; align-items: center; gap: 8px; padding: 0 10px; font: 500 12px/1 var(--font-ui); color: var(--accent); animation: kpulse 1.1s ease-in-out infinite; }
+
+/* Touch screens: bigger targets for the small controls (about 40px). */
+@media (pointer: coarse) {
+  .pick { width: 26px; height: 26px; top: 2px; left: 2px; }
+  .trash { width: 40px; height: 40px; }
+  .regen { height: 40px; padding: 0 14px; }
+  .selectAll { padding: 12px 6px; margin-top: -12px; margin-bottom: -12px; }
+  .addChip, .pack { height: 40px; }
+  .bulkClear { padding: 12px 8px; }
+}

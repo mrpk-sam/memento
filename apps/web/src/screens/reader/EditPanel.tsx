@@ -42,15 +42,31 @@ export function EditPanel({ content, themes, L, single, goTo, selPhoto, setSelPh
   const patchBook = useBookPatch();
   const ch = chapters(pages);
 
-  // Clicking a photo on the page scrolls its card into view here.
+  // Clicking a photo on the page scrolls its card into view here. On a phone the panel sits below
+  // the book, so the page scrolls too, not just the panel.
   useEffect(() => {
     if (!selPhoto) return;
     const t = setTimeout(() => {
-      const el = panelRef.current?.querySelector<HTMLElement>(`[data-edit="${selPhoto}"]`);
-      if (panelRef.current && el) panelRef.current.scrollTo({ top: el.offsetTop - 120, behavior: 'smooth' });
+      panelRef.current?.querySelector<HTMLElement>(`[data-edit="${selPhoto}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 30);
     return () => clearTimeout(t);
   }, [selPhoto]);
+
+  /** Runs a reorder, then scrolls so the moved photo's card stays under the finger or pointer. */
+  const followCard = (id: string, act: () => void) => {
+    const card = () => panelRef.current?.querySelector<HTMLElement>(`[data-edit="${id}"]`);
+    const before = card()?.getBoundingClientRect().top;
+    act();
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        const after = card()?.getBoundingClientRect().top;
+        if (before == null || after == null || Math.abs(after - before) < 1) return;
+        const panel = panelRef.current!;
+        if (panel.scrollHeight > panel.clientHeight + 1) panel.scrollBy(0, after - before);
+        else window.scrollBy(0, after - before);
+      }),
+    );
+  };
 
   const mainTheme = themeOf(themes, main.themeId);
   const spreadLabel = main.type === 'month' ? `${main.label} · ${mainTheme.name}` : main.label || TYPE_LABEL[main.type] || 'Spread';
@@ -433,10 +449,10 @@ export function EditPanel({ content, themes, L, single, goTo, selPhoto, setSelPh
                         const temp = p.id.startsWith('tmp-');
                         return (
                           <>
-                            <button className={s.trash} title="Move earlier" aria-label="Move earlier" disabled={!earlier || temp} style={{ opacity: earlier && !temp ? 1 : 0.35 }} onClick={(e) => (e.stopPropagation(), earlier && void editor.movePhoto(p.id, earlier.toIdx, earlier.position))}>
+                            <button className={s.trash} title="Move earlier" aria-label="Move earlier" disabled={!earlier || temp} style={{ opacity: earlier && !temp ? 1 : 0.35 }} onClick={(e) => (e.stopPropagation(), earlier && followCard(p.id, () => void editor.movePhoto(p.id, earlier.toIdx, earlier.position)))}>
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
                             </button>
-                            <button className={s.trash} title="Move later" aria-label="Move later" disabled={!later || temp} style={{ opacity: later && !temp ? 1 : 0.35 }} onClick={(e) => (e.stopPropagation(), later && void editor.movePhoto(p.id, later.toIdx, later.position))}>
+                            <button className={s.trash} title="Move later" aria-label="Move later" disabled={!later || temp} style={{ opacity: later && !temp ? 1 : 0.35 }} onClick={(e) => (e.stopPropagation(), later && followCard(p.id, () => void editor.movePhoto(p.id, later.toIdx, later.position)))}>
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6" /></svg>
                             </button>
                           </>

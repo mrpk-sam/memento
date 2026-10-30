@@ -16,3 +16,4 @@
 .prev:hover { transform: translateX(-3px); }
 .next:hover { transform: translateX(3px); }
 .count { position: absolute; bottom: 26px; left: 50%; transform: translateX(-50%); font: 500 13px/1 var(--font-ui); color: rgba(255,255,255,.8); transition: opacity .3s; font-variant-numeric: tabular-nums; }
+.offline { position: absolute; left: 12px; right: 12px; bottom: 12px; padding: 10px 12px; border-radius: 10px; background: rgba(24,16,10,.78); color: #fff; font: 500 14px/1.3 var(--font-ui); text-align: center; }

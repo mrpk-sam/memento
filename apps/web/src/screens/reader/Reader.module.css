@@ -49,3 +49,7 @@
 .footArrow { width: 48px; height: 48px; flex: none; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--ink); align-items: center; justify-content: center; cursor: pointer; }
 .counter { padding: 9px 14px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); color: var(--ink); font: 500 13px/1 var(--font-ui); font-variant-numeric: tabular-nums; }
 .ghost { position: fixed; z-index: 95; pointer-events: none; background: #fff center/cover no-repeat; border: 6px solid #fff; border-bottom-width: 18px; box-shadow: 0 24px 40px -14px rgba(40,25,10,.55), 0 2px 4px rgba(0,0,0,.12); transform: rotate(3deg) scale(1.05); opacity: .95; }
+
+@media (pointer: coarse) {
+  .seg > button { height: 40px; }
+}

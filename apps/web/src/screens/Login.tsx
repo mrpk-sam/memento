@@ -80,7 +80,7 @@ export function Login() {
       <CodeCard
         onRequest={() => setRequesting(true)}
         email={email.trim()}
-        onResend={() => void submit()}
+        onResend={() => api('/auth/magic-link', { body: { email } })}
         onChangeEmail={() => {
           setState('idle');
           setTimeout(() => ref.current?.focus(), 50);
@@ -137,14 +137,14 @@ export function Login() {
 }
 
 /** Six boxes for the emailed code, styled like the PIN modal. Submits on the sixth digit. */
-function CodeCard({ email, onResend, onChangeEmail, onSignedIn, onRequest }: { email: string; onResend: () => void; onChangeEmail: () => void; onSignedIn: () => Promise<void>; onRequest: () => void }) {
+function CodeCard({ email, onResend, onChangeEmail, onSignedIn, onRequest }: { email: string; onResend: () => Promise<unknown>; onChangeEmail: () => void; onSignedIn: () => Promise<void>; onRequest: () => void }) {
   const { vw } = useViewport();
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [busy, setBusy] = useState(false);
   const [shake, setShake] = useState(0);
-  const [resent, setResent] = useState(false);
+  const [resent, setResent] = useState<'no' | 'sending' | 'sent'>('no');
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const t = setTimeout(() => ref.current?.focus(), 60);
@@ -204,24 +204,32 @@ function CodeCard({ email, onResend, onChangeEmail, onSignedIn, onRequest }: { e
             onChange={(e) => void onChange(e.target.value)}
             inputMode="numeric"
             autoComplete="one-time-code"
-            maxLength={6}
             aria-label="6-digit code"
             className={s.hidden}
           />
         </div>
         <div className={s.msg} style={{ color: success ? '#5E8B5A' : error ? '#C0443A' : 'var(--ink2)' }}>
-          {success ? 'Signed in. Opening the library…' : error ?? (resent ? 'A new code is on its way.' : 'The code works once, for 15 minutes.')}
+          {success ? 'Signed in. Opening the library…' : error ?? (resent === 'sending' ? 'Sending a new code…' : resent === 'sent' ? 'A new code is on its way.' : 'The code works once, for 15 minutes.')}
         </div>
         {!success && (
           <div className={s.links}>
             <button
               type="button"
               className={s.link}
-              onClick={() => {
-                onResend();
-                setResent(true);
-                setCode('');
+              disabled={resent === 'sending'}
+              onClick={async () => {
+                // The code box stays put while a new code is sent. If that fails (too many
+                // tries), the code already in the inbox still works here.
+                setResent('sending');
                 setError(null);
+                try {
+                  await onResend();
+                  setResent('sent');
+                  setCode('');
+                } catch (e) {
+                  setResent('no');
+                  setError(errorMessage(e));
+                }
                 ref.current?.focus();
               }}
             >

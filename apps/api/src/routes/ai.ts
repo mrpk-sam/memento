@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { bookOwnerName, captionContext, familyOf } from '@memento/shared';
 import * as s from '../db/schema.js';
 import { SEED_BASE_PROMPT, SEED_CAPTION_STYLES } from '../db/seed-data.js';
-import { chatComplete, listModels, loadAiConfig, writeCaption } from '../lib/ai.js';
+import { aiReady, chatComplete, listModels, loadAiConfig, writeCaption } from '../lib/ai.js';
 import { encrypt, maskKey, decrypt } from '../lib/crypto.js';
 import { HttpError, badRequest, forbidden, notFound, parse } from '../lib/http.js';
 import { requireAdmin, requireUser } from '../lib/session.js';
@@ -224,6 +224,10 @@ export async function aiRoutes(app: FastifyInstance) {
     try {
       return { caption: await writeCaption(c, v.subject || 'a family photo', where, image, { fetch: aiFetch }) };
     } catch (e) {
+      // Only the admin can set captions up, so others are pointed to them, not to the Desk.
+      if (e instanceof HttpError && e.statusCode === 400 && user.access !== 'admin' && !aiReady(c)) {
+        throw new HttpError(400, "AI captions aren't turned on yet. Ask the family admin to set them up.");
+      }
       // The upstream reply can name hosts or accounts, so only the admin sees it.
       if (e instanceof HttpError && (user.access === 'admin' || e.statusCode !== 502)) throw e;
       req.log.warn({ err: e }, 'Caption failed');

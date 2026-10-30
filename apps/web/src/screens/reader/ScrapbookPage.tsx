@@ -47,6 +47,11 @@ export const ScrapbookPage = memo(function ScrapbookPage({ page, scale, editMode
   // then switches to three columns (like a year page) to fit up to 6.
   const roomyMonth = layout === 'monthL' && photoCount <= 4;
   const cols = roomyMonth ? 2 : 3;
+  // The page is drawn at 600×750 and scaled down. On a phone (scale ~0.6) a 16.5px caption ends
+  // up near 10px, so small text grows as the page shrinks, aiming for ~12px on screen. The cap
+  // keeps captions within their photo cards.
+  const textBoost = Math.min(1.35, Math.max(1, 12 / (16.5 * scale)));
+  const tagBoost = Math.min(1.6, Math.max(1, 8 / (9 * scale)));
   const muted = `color-mix(in srgb, ${th.ink} 62%, ${th.paper})`;
   const isEnd = p.type === 'endpaper' || p.type === 'backpaper';
 
@@ -388,8 +393,8 @@ export const ScrapbookPage = memo(function ScrapbookPage({ page, scale, editMode
                   <div className={s.photoImg} style={{ height: ph.h, background: phBg(ph.hue) }}>
                     {ph.src && <img src={ph.src} alt="" loading="lazy" className={s.cover} draggable={false} />}
                     {!ph.src && <span className={s.subject}>{ph.subjectShown}</span>}
-                    {ph.monthTag && <span className={s.monthTag} style={{ color: th.accent }}>{ph.monthTag}</span>}
-                    {ph.video && <PlayTag durationMs={ph.durationMs} color={th.accent} />}
+                    {ph.monthTag && <span className={s.monthTag} style={{ color: th.accent, fontSize: 9 * tagBoost }}>{ph.monthTag}</span>}
+                    {ph.video && <PlayTag durationMs={ph.durationMs} color={th.accent} size={9 * tagBoost} />}
                   </div>
                   {ph.loading ? (
                     <div className={s.capLoading}>
@@ -397,7 +402,7 @@ export const ScrapbookPage = memo(function ScrapbookPage({ page, scale, editMode
                       <div style={{ width: '60%', background: `color-mix(in srgb, ${th.accent} 35%, #eee)` }} />
                     </div>
                   ) : (
-                    <div className={s.caption} style={{ fontSize: layout === 'monthR' || roomyMonth ? 18 : 16.5, color: ph.capColor }}>{ph.capText}</div>
+                    <div className={s.caption} style={{ fontSize: (layout === 'monthR' || roomyMonth ? 18 : 16.5) * textBoost, color: ph.capColor }}>{ph.capText}</div>
                   )}
                 </div>
                 );
@@ -446,10 +451,10 @@ export const ScrapbookPage = memo(function ScrapbookPage({ page, scale, editMode
 });
 
 /** Marks a video on its page tile: a play triangle and the running time. */
-function PlayTag({ durationMs, color }: { durationMs?: number | null; color: string }) {
+function PlayTag({ durationMs, color, size }: { durationMs?: number | null; color: string; size: number }) {
   return (
-    <span className={s.playTag} style={{ color }} aria-label="Video">
-      <svg width="8" height="9" viewBox="0 0 8 9" fill="currentColor" aria-hidden="true"><path d="M0 0l8 4.5L0 9z" /></svg>
+    <span className={s.playTag} style={{ color, fontSize: size }} aria-label="Video">
+      <svg width={size * 0.9} height={size} viewBox="0 0 8 9" fill="currentColor" aria-hidden="true"><path d="M0 0l8 4.5L0 9z" /></svg>
       {durationMs ? duration(durationMs) : null}
     </span>
   );
