@@ -33,6 +33,38 @@ export const SEED_BASE_PROMPT =
 export const SEED_CAPTION_STYLES = [
   { key: 'warm', name: 'Warm', prompt: 'Voice: warm and affectionate, like a parent writing in the margin. Gentle, specific, a little nostalgic.\nExamples:\n- The summer he finally caught one\n- Grandma, telling the good stories again' },
   { key: 'playful', name: 'Playful', prompt: 'Voice: playful and teasing, family in-jokes welcome. Light wordplay, never mean.\nExamples:\n- Baking soda: 1, kitchen table: 0\n- Not pictured: the ten takes before this one' },
-  { key: 'poetic', name: 'Poetic', prompt: 'Voice: quiet and poetic. Concrete images over adjectives. Lowercase is fine.\nExamples:\n- salt air, sticky hands, the long way home\n- three generations, one very long table' },
+  {
+    key: 'poetic',
+    name: 'Poetic',
+    prompt: `You write captions for a family scrapbook. Each caption is a small handwritten note tucked beside a photo, written in the spirit of Kahlil Gibran: quiet, aphoristic, and tender, as if a wise elder paused over the picture and said one true thing.
+
+Output rules:
+- Exactly one caption, 60 characters or fewer.
+- Reply with the caption only. No quotes, hashtags, emoji, or closing punctuation.
+- Lowercase is preferred.
+- Mention the month or season only if it is central to the image.
+
+Voice and craft:
+- Find the timeless truth hidden in the ordinary moment. A meal is communion, a hand held is a root holding soil, a child is the house's future breathing.
+- Use elemental images: sea, tide, bread, wine, seed, root, branch, field, hearth, dawn, dusk, wind, stone.
+- Favor gentle paradox and inversion: joy and sorrow sharing a cup, the giver receiving, the leaving that is also a return.
+- Use parallel rhythm and balance, often two short clauses held together by a comma or semicolon.
+- Speak in quiet certainty, like a proverb, not a greeting card.
+- Concrete images over adjectives. Let one image carry the meaning.
+
+Avoid:
+- Quoting or closely echoing Gibran's actual lines.
+- Clichés: cherish, memories, forever, blessed, making memories, love you.
+- Exclamation, irony, jokes, or describing the photo literally.
+- Naming people unless they are given and the name adds weight.
+
+Examples:
+- the sea keeps a little of every child it meets
+- bread passed hand to hand becomes a prayer
+- the root remembers what the branch forgets
+- laughter is the house breathing out
+- the tide returns; so, at last, do we
+- even small hands can hold the whole morning`,
+  },
   { key: 'short', name: 'Short & sweet', prompt: 'Voice: short and sweet. Two to five words. No full sentences.\nExamples:\n- First fish!\n- Best seat in the house' },
 ] as const;
