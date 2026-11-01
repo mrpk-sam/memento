@@ -141,7 +141,8 @@ export type SpreadResult<T> =
  * Places new photos dropped on the spread starting at page L.
  * On a year spread, new photos join with no month (after the month-tagged ones) until
  * someone picks their month in the editor.
- * Elsewhere they fill the dropped-on page first, then its neighbour.
+ * In a month chapter they fill its pages in reading order, whichever page they were dropped on,
+ * so the chapter never ends up with mostly empty pages.
  */
 export function placeOnSpread<T extends P>(pages: T[], L: number, opts: { single: boolean; side?: 'L' | 'R' }, photos: ModelPhoto[]): SpreadResult<T> {
   const idxs = opts.single ? [L] : opts.side === 'L' ? [L, L + 1] : [L + 1, L];
@@ -154,16 +155,22 @@ export function placeOnSpread<T extends P>(pages: T[], L: number, opts: { single
     if (!added.length) return { kind: 'year-full' };
     return { kind: 'year', pages: reflow(pages, yl, [...all, ...added]), added, left: photos.length - added.length };
   }
-  // In a month chapter, what doesn't fit the dropped-on spread carries on into the chapter's other pages.
   const start = chapterStart(pages, L);
-  const rest = start != null && isMonth(pages, start) ? chapterSpan(pages, start).filter((i) => !idxs.includes(i)) : [];
-  const r = insertPhotos(pages, [...idxs, ...rest], photos);
+  const r = insertPhotos(pages, start != null && isMonth(pages, start) ? chapterSpan(pages, start) : idxs, photos);
   return { kind: 'pages', ...r };
 }
 
-/** Where an inbox photo filed to a chapter goes: the chapter's right page first, then its left, then any extra pages. */
+/**
+ * Where an inbox photo filed to a chapter goes. A year takes it in month order (no month goes
+ * last); a month chapter puts it on its first page with room, in reading order.
+ */
 export function fileToChapter<T extends P>(pages: T[], chapterIdx: number, photo: ModelPhoto): InsertResult<T> {
-  return insertPhotos(pages, [chapterIdx + 1, chapterIdx, ...chapterSpan(pages, chapterIdx).slice(2)], [photo]);
+  if (pages[chapterIdx]?.layout === 'summaryL') {
+    const all = [...(pages[chapterIdx]!.photos ?? []), ...(pages[chapterIdx + 1]?.photos ?? [])];
+    if (all.length >= YEAR_CAPACITY) return { pages, placed: [], left: 1 };
+    return { pages: reflow(pages, chapterIdx, [...all, photo]), placed: [photo.id], left: 0 };
+  }
+  return insertPhotos(pages, chapterSpan(pages, chapterIdx), [photo]);
 }
 
 export type ChapterMoveResult<T> = { kind: 'moved'; pages: T[] } | { kind: 'same' } | { kind: 'full' } | { kind: 'invalid' };
@@ -173,7 +180,7 @@ export type ChapterMoveResult<T> = { kind: 'moved'; pages: T[] } | { kind: 'same
  * chapter's left page index. The year it leaves closes the gap in month order.
  * - Into a year: it joins in month order, keeping its month. A year holds 15.
  * - Into a month chapter: it takes that month and fills the chapter like an inbox photo
- *   (right page first, then left).
+ *   (first page with room, in reading order).
  */
 export function moveToChapter<T extends P>(pages: T[], photoId: string, chapterIdx: number): ChapterMoveResult<T> {
   const fromIdx = pages.findIndex((pg) => pg.photos?.some((p) => p.id === photoId));

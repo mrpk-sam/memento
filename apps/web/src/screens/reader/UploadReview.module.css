@@ -10,9 +10,9 @@
 .title { margin: 2px 0 0; font: 400 26px/1.15 var(--font-display); }
 .sub { margin: 0; font: 400 14px/1.45 var(--font-ui); color: var(--ink2); }
 
-.all { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--surface2); }
-.allLabel { font: 600 13px/1 var(--font-ui); margin-right: 2px; }
-.allSelect { height: 32px; min-width: 0; border-radius: 8px; border: 1px solid var(--line); background: var(--field); color: var(--ink); padding: 0 8px; font: 500 13px/1 var(--font-ui); cursor: pointer; }
+.all { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--surface2); }
+.allLabel { flex-basis: 100%; font: 600 13px/1 var(--font-ui); }
+.allSelect { width: 100%; height: 32px; min-width: 0; border-radius: 8px; border: 1px solid var(--line); background: var(--field); color: var(--ink); padding: 0 8px; font: 500 13px/1 var(--font-ui); cursor: pointer; }
 
 .list { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 22px; display: flex; flex-direction: column; gap: 12px; overscroll-behavior: contain; }
 .item { display: grid; gap: 14px; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); animation: kfade .3s ease both; }
@@ -26,7 +26,9 @@
 .subject:disabled { opacity: .6; }
 .caption { width: 100%; resize: none; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--ink); padding: 7px 10px; font: 500 20px/1.15 var(--font-script); }
 .writing { height: 50px; border-radius: 8px; background: var(--surface2); display: flex; align-items: center; gap: 8px; padding: 0 10px; font: 500 12px/1 var(--font-ui); color: var(--accent); animation: kpulse 1.1s ease-in-out infinite; }
-.select { flex: 1 1 130px; min-width: 0; height: 32px; border-radius: 8px; border: 1px solid var(--line); background: var(--field); color: var(--ink); padding: 0 8px; font: 500 13px/1 var(--font-ui); cursor: pointer; }
+.field { flex: 1 1 140px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.field > span { font: 600 11px/1 var(--font-ui); color: var(--ink2); }
+.select { width: 100%; min-width: 0; height: 32px; border-radius: 8px; border: 1px solid var(--line); background: var(--field); color: var(--ink); padding: 0 8px; font: 500 13px/1 var(--font-ui); cursor: pointer; }
 .select:disabled { opacity: .6; cursor: default; }
 .ai { height: 32px; padding: 0 12px; border-radius: var(--r-pill); border: 0; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); font: 600 12px/1 var(--font-ui); display: flex; align-items: center; gap: 5px; cursor: pointer; white-space: nowrap; }
 .ai:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); }

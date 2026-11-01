@@ -89,9 +89,9 @@ describe('moveToChapter', () => {
     const r = moveToChapter(book([ph('a', 0), ph('b', 6), ph('c', 8)], [ph('j1', 6)]), 'b', 6);
     if (r.kind !== 'moved') throw new Error(r.kind);
     expect(ids(r.pages, 4)).toEqual(['a', 'c']);
-    // Like inbox filing: the chapter's right page first.
-    expect(ids(r.pages, 7)).toEqual(['b']);
-    expect(months(r.pages, 7)).toEqual([6]);
+    // Like inbox filing: the chapter's first page with room.
+    expect(ids(r.pages, 6)).toEqual(['j1', 'b']);
+    expect(months(r.pages, 6)).toEqual([6, 6]);
   });
 
   it('adds to a month chapter that already has photos', () => {
@@ -166,11 +166,18 @@ describe('placeOnSpread', () => {
     expect(r.kind).toBe('year');
   });
 
-  it('fills the dropped-on page first on month chapters', () => {
-    const r = placeOnSpread(book(), 6, { single: false, side: 'R' }, [ph('n')]);
+  it('fills a month chapter in reading order, whichever page photos are dropped on', () => {
+    const r = placeOnSpread(book([], [ph('j1')]), 6, { single: false, side: 'R' }, many('n', 7));
     if (r.kind !== 'pages') throw new Error(r.kind);
-    expect(ids(r.pages, 7)).toEqual(['n']);
-    expect(ids(r.pages, 6)).toEqual([]);
+    expect(ids(r.pages, 6)).toEqual(['j1', 'n0', 'n1', 'n2', 'n3', 'n4']);
+    expect(ids(r.pages, 7)).toEqual(['n5', 'n6']);
+  });
+
+  it('fills the first page from the right page in single-page view', () => {
+    const r = placeOnSpread(book([], [ph('j1')]), 7, { single: true }, many('n', 9));
+    if (r.kind !== 'pages') throw new Error(r.kind);
+    expect(ids(r.pages, 6)).toHaveLength(6);
+    expect(ids(r.pages, 7)).toEqual(['n5', 'n6', 'n7', 'n8']);
   });
 
   it('refuses spreads with no photo slots', () => {
@@ -183,11 +190,17 @@ describe('chapters and filing', () => {
     expect(chapterList(book()).map((c) => c.key)).toEqual(['y-2024', 'm-2024-July', 'y-2025']);
   });
 
-  it('files an inbox photo to the chapter right page first', () => {
+  it("files an inbox photo to the chapter's first page with room", () => {
     const pages = book();
     const idx = chapterIndex(pages, 'm-2024-July')!;
-    const r = fileToChapter(pages, idx, ph('n'));
-    expect(ids(r.pages, 7)).toEqual(['n']);
+    expect(ids(fileToChapter(pages, idx, ph('n')).pages, 6)).toEqual(['n']);
+    expect(ids(fileToChapter(book([], many('j', 6)), idx, ph('n')).pages, 7)).toEqual(['n']);
+  });
+
+  it('files an inbox photo into a year in month order, with no month last', () => {
+    const r = fileToChapter(book([ph('a', 0), ph('b', 6)]), 4, ph('n'));
+    expect(ids(r.pages, 4)).toEqual(['a', 'b', 'n']);
+    expect(fileToChapter(book(many('y', YEAR_CAPACITY, 1)), 4, ph('n')).placed).toEqual([]);
   });
 
   it('puts new month chapters in month order inside their year', () => {
@@ -247,7 +260,8 @@ describe('growing month chapters', () => {
     if (r.kind !== 'moved') throw new Error(r.kind);
     expect(r.moved).toBe(2);
     expect(ids(r.pages, 4)).toEqual(['b']);
-    expect(months(r.pages, 7)).toEqual([6, 6]);
+    expect(ids(r.pages, 6)).toEqual(['j0', 'j1', 'a', 'c']);
+    expect(months(r.pages, 6)).toEqual([6, 6, 6, 6]);
     expect(moveManyToChapter(grown(0, many('j', 13)), ['a', 'b'], 6).kind).toBe('invalid');
     expect(moveManyToChapter(book([ph('a'), ph('b')], many('j', 13)), ['a', 'b'], 6).kind).toBe('full');
     expect(moveManyToChapter(pages, ['j0'], 6).kind).toBe('same');

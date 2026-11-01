@@ -37,8 +37,8 @@ describe('photo inbox', () => {
     const res = await api(admin, 'POST', `/api/inbox/${items[0].id}/file`);
     expect(res.json()).toMatchObject({ bookId: books[0].id, pageIdx: 4, chapter: '2026 in photos', owner: 'Marco & Elena' });
     const pages = (await api(admin, 'GET', `/api/books/${books[0].id}`)).json().pages;
-    // Right page of the chapter first.
-    expect(pages[5].photos[0]).toMatchObject({ caption: 'Eighty candles, one big breath', subject: 'grandma pearl 80th' });
+    // A year takes it in month order: with no month, after the photo already there.
+    expect(pages[4].photos.at(-1)).toMatchObject({ caption: 'Eighty candles, one big breath', subject: 'grandma pearl 80th' });
     expect((await api(admin, 'GET', '/api/inbox')).json().items).toHaveLength(0);
   });
 

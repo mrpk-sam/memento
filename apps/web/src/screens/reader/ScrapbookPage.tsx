@@ -1,5 +1,5 @@
-import { memo, type CSSProperties, type MouseEvent } from 'react';
-import { hash, rng } from '@memento/shared';
+import { memo, useLayoutEffect, useRef, type CSSProperties, type MouseEvent } from 'react';
+import { capacity, hash, rng } from '@memento/shared';
 import { duration } from '../../lib/text';
 import type { RPage } from './resolve';
 import s from './ScrapbookPage.module.css';
@@ -55,18 +55,23 @@ export const ScrapbookPage = memo(function ScrapbookPage({ page, scale, editMode
   const muted = `color-mix(in srgb, ${th.ink} 62%, ${th.paper})`;
   const isEnd = p.type === 'endpaper' || p.type === 'backpaper';
 
+  const gridRef = useRef<HTMLDivElement>(null);
+  const capKey = (('photos' in p && p.photos) || []).map((ph) => `${ph.id}:${ph.caption}:${ph.loading ? 1 : 0}`).join('|');
+  useLayoutEffect(() => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    fitCaptions(grid);
+    let live = true;
+    // Handwritten fonts change line lengths once they load.
+    void document.fonts?.ready.then(() => live && gridRef.current && fitCaptions(gridRef.current));
+    return () => {
+      live = false;
+    };
+  }, [capKey, layout, scale, edit]);
+
   const photos = (('photos' in p && p.photos) || []).map((ph, i) => {
     const r = rng(hash(ph.id));
-    let span = 1;
-    let h = 104;
-    if (roomyMonth) h = 124;
-    if (layout === 'monthR') {
-      if (i === 0) {
-        span = 2;
-        h = 176;
-      } else if (i === 1) h = 176;
-      else h = 116;
-    }
+    const { span, h } = slotSize(layout, roomyMonth, i);
     const washi = i % 3 === 1;
     const selected = edit && selectedId === ph.id;
     return {
@@ -371,6 +376,7 @@ export const ScrapbookPage = memo(function ScrapbookPage({ page, scale, editMode
 
           {photos.length > 0 && (
             <div
+              ref={gridRef}
               className={s.grid}
               style={{
                 gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))`,
@@ -415,11 +421,29 @@ export const ScrapbookPage = memo(function ScrapbookPage({ page, scale, editMode
                       <div style={{ width: '60%', background: `color-mix(in srgb, ${th.accent} 35%, #eee)` }} />
                     </div>
                   ) : (
-                    <div className={s.caption} style={{ fontSize: (layout === 'monthR' || roomyMonth ? 18 : 16.5) * textBoost, color: ph.capColor }}>{ph.capText}</div>
+                    <div className={s.caption} data-caption style={{ fontSize: (layout === 'monthR' || roomyMonth ? 18 : 16.5) * textBoost, color: ph.capColor }}>{ph.capText}</div>
                   )}
                 </div>
                 );
               })}
+              {edit && onEmpty && !dragId && photos.length < capacity({ layout }) && (
+                <button
+                  type="button"
+                  className={s.addTile}
+                  aria-label="Add photos to this page"
+                  title="Add photos to this page"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEmpty();
+                  }}
+                  style={{ gridColumn: `span ${slotSize(layout, roomyMonth, photos.length).span}`, color: th.accent, '--accent': th.accent } as CSSProperties}
+                >
+                  <span className={s.addTileBox} style={{ height: slotSize(layout, roomyMonth, photos.length).h }}>
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+                    <span className={s.addTileText}>Add photos</span>
+                  </span>
+                </button>
+              )}
             </div>
           )}
 
@@ -471,4 +495,37 @@ function PlayTag({ durationMs, color, size }: { durationMs?: number | null; colo
       {durationMs ? duration(durationMs) : null}
     </span>
   );
+}
+
+/**
+ * Ends captions that don't fit their card with "…" on a whole line, rather than cutting a line in
+ * half. The page's grid has already shrunk the cards to fit; this only reads and clamps. The
+ * lightbox shows the full caption.
+ */
+function fitCaptions(grid: HTMLElement) {
+  const caps = [...grid.querySelectorAll<HTMLElement>('[data-caption]')];
+  for (const el of caps) {
+    el.removeAttribute('data-clamp');
+    el.style.removeProperty('-webkit-line-clamp');
+  }
+  // Read everything first, then write, so the browser lays the page out once.
+  const fits = caps.map((el) => {
+    if (el.scrollHeight <= el.clientHeight + 1) return null;
+    const cs = getComputedStyle(el);
+    const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.05;
+    const room = el.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    return Math.max(1, Math.floor((room + 0.5) / lh));
+  });
+  caps.forEach((el, i) => {
+    const n = fits[i];
+    if (n == null) return;
+    el.setAttribute('data-clamp', '');
+    el.style.setProperty('-webkit-line-clamp', String(n));
+  });
+}
+
+/** A photo slot's column span and image height, by layout and position on the page. */
+function slotSize(layout: string, roomyMonth: boolean, i: number) {
+  if (layout === 'monthR') return i === 0 ? { span: 2, h: 176 } : { span: 1, h: i === 1 ? 176 : 116 };
+  return { span: 1, h: roomyMonth ? 124 : 104 };
 }
