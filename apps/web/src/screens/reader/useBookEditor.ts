@@ -13,6 +13,21 @@ type LayoutEntry = { id: string; pageId: string | null; position: number; month:
 /** Photo ids that are still uploading or writing a caption, for the loading shimmer. */
 export type LoadingSet = Set<string>;
 
+/** One file in the review sheet that opens on upload. `id` is the photo once the server has it. */
+export interface ReviewSlot {
+  key: string;
+  name: string;
+  preview: string | null;
+  id: string | null;
+  status: 'uploading' | 'ready' | 'failed';
+  error?: string;
+}
+export interface Review {
+  slots: ReviewSlot[];
+  /** True once every file has been processed. */
+  done: boolean;
+}
+
 /**
  * Everything the edit panel does to a book. Changes show at once (optimistic),
  * save in the background, and report "Saving… / Saved just now".
@@ -23,6 +38,18 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
   const key = qk.book(bookId);
   const [saved, setSaved] = useState<Saved>('All changes saved');
   const [loading, setLoading] = useState<LoadingSet>(new Set());
+  const [review, setReview] = useState<Review | null>(null);
+  /** Local previews shown in the review sheet. They're freed when the sheet closes. */
+  const reviewUrls = useRef<string[]>([]);
+  /** The sheet already shows each file's outcome, so the summary toast waits for it to close. */
+  const reviewOpen = useRef(false);
+  const freeReviewUrls = () => {
+    reviewUrls.current.forEach((u) => URL.revokeObjectURL(u));
+    reviewUrls.current = [];
+  };
+  useEffect(() => freeReviewUrls, []);
+  const patchSlot = (key: string, patch: Partial<ReviewSlot>) =>
+    setReview((r) => r && { ...r, slots: r.slots.map((x) => (x.key === key ? { ...x, ...patch } : x)) });
   const pending = useRef(0);
   const debounces = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   /** The debounced saves still waiting, so flush() can send them early. */
@@ -32,16 +59,22 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
    * Text typed but not saved yet (captions; page header, journal and title text). A reply from
    * another save, or a reload after a failed one, must not put the old text back on screen.
    */
-  const unsaved = useRef({ captions: new Map<string, string>(), pages: new Map<string, PagePatch>() });
+  const unsaved = useRef({ captions: new Map<string, string>(), subjects: new Map<string, string>(), pages: new Map<string, PagePatch>() });
 
   const withUnsaved = (pages: PageDto[]) => {
     const u = unsaved.current;
-    if (!u.captions.size && !u.pages.size) return pages;
-    const cap = <P extends PhotoDto | null>(p: P): P => (p && u.captions.has(p.id) ? { ...p, caption: u.captions.get(p.id)! } : p);
+    if (!u.captions.size && !u.subjects.size && !u.pages.size) return pages;
+    const cap = <P extends PhotoDto | null>(p: P): P => {
+      if (!p) return p;
+      const caption = u.captions.get(p.id);
+      const subject = u.subjects.get(p.id);
+      return caption === undefined && subject === undefined ? p : { ...p, ...(caption !== undefined && { caption }), ...(subject !== undefined && { subject }) };
+    };
+    const photos = u.captions.size > 0 || u.subjects.size > 0;
     return pages.map((pg) => {
       const patch = u.pages.get(pg.id);
       const next = patch ? applyPagePatch(pg, patch) : pg;
-      return u.captions.size ? { ...next, hero: cap(next.hero), photos: next.photos.map(cap) } : next;
+      return photos ? { ...next, hero: cap(next.hero), photos: next.photos.map(cap) } : next;
     });
   };
 
@@ -117,15 +150,26 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
     );
   };
 
+  /** Saves "what's in the photo" after a pause in typing. AI captions are written from it. */
+  const queueSubject = (photoId: string, subject: string) => {
+    unsaved.current.subjects.set(photoId, subject);
+    later(`subj:${photoId}`, 600, () =>
+      void save(() => api(`/photos/${photoId}`, { method: 'PATCH', body: { subject } })).then((ok) => {
+        if (ok !== undefined && unsaved.current.subjects.get(photoId) === subject) unsaved.current.subjects.delete(photoId);
+      }),
+    );
+  };
+
   // Back online: send again whatever didn't save. Leaving the page with work in flight asks first.
   useEffect(() => {
     const retry = () => {
       for (const [id, caption] of unsaved.current.captions) queueCaption(id, caption);
+      for (const [id, subject] of unsaved.current.subjects) queueSubject(id, subject);
       for (const [id, patch] of unsaved.current.pages) sendPagePatch(id, patch);
     };
     const warn = (e: BeforeUnloadEvent) => {
       const u = unsaved.current;
-      if (pending.current > 0 || waiting.current.size || u.captions.size || u.pages.size) {
+      if (pending.current > 0 || waiting.current.size || u.captions.size || u.subjects.size || u.pages.size) {
         e.preventDefault();
         e.returnValue = '';
       }
@@ -234,9 +278,40 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
   return {
     saved,
     loading,
+    review,
     regen,
     regenAll,
     patchPage,
+
+    closeReview() {
+      reviewOpen.current = false;
+      setReview(null);
+      freeReviewUrls();
+    },
+
+    setSubject(photoId: string, subject: string) {
+      updatePhoto(photoId, { subject });
+      queueSubject(photoId, subject);
+    },
+
+    /** Gives several photos one month, as one change with one toast. */
+    async setMonths(photoIds: string[], month: number | null) {
+      const ids = photoIds.filter((id) => findPhoto(id)?.p.month !== month);
+      if (!ids.length) return;
+      for (const id of ids) {
+        const local = placeMonth(get()?.pages ?? [], id, month);
+        if (local) setPages(() => local.pages as PageDto[]);
+      }
+      const res = await save(async () => {
+        let last: BookContent | undefined;
+        for (const id of ids) last = await api<BookContent>(`/photos/${id}/month`, { body: { month } });
+        return last;
+      });
+      if (!res) return;
+      setContent(res);
+      const what = ids.length === 1 ? 'Photo' : `${ids.length} photos`;
+      toast(month == null ? `${what} no longer tied to a month` : `${what} moved to ${MONTHS[month]}`);
+    },
 
     setCaption(photoId: string, caption: string) {
       updatePhoto(photoId, { caption });
@@ -358,6 +433,18 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
       if (probe.kind === 'year-full') return toast('This year is full. Remove a photo, or add more to a month chapter.');
       // A browser can't show a video file as an image, so videos wait as a blank tile until their poster arrives.
       const urls = new Map(temp.flatMap((t) => (isVideoFile(t.file) ? [] : [[t.id, URL.createObjectURL(t.file)] as const])));
+      // The review sheet keeps its own previews: the page's are freed once the batch is done.
+      freeReviewUrls();
+      const sheetUrls = new Map(temp.flatMap((t) => (isVideoFile(t.file) ? [] : [[t.id, URL.createObjectURL(t.file)] as const])));
+      reviewUrls.current = [...sheetUrls.values()];
+      reviewOpen.current = true;
+      setReview({
+        done: false,
+        slots: [
+          ...temp.map((t): ReviewSlot => ({ key: t.id, name: t.file.name, preview: sheetUrls.get(t.id) ?? null, id: null, status: 'uploading' })),
+          ...rejected.map((r, i): ReviewSlot => ({ key: `rej-${i}`, name: r.name, preview: null, id: null, status: 'failed', error: r.error })),
+        ],
+      });
       const toDto = (p: { id: string; month: number | null }): PhotoDto => {
         const t = temp.find((x) => x.id === p.id);
         if (!t) return p as PhotoDto;
@@ -373,9 +460,13 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
       const res = await save(async () => {
         const results = await uploadFiles(files);
         const out = { kind: probe.kind as 'year' | 'pages', added: [] as { id: string; month: number | null }[], left: 0, monthFull: false, skipped: [...rejected], content: null as PhotosRes | null };
+        const noRoom = () => (out.monthFull ? `${chapterName} holds 50 photos, so this one didn't fit.` : "This spread is full, so this one didn't fit.");
         for (const [i, up] of results.entries()) {
-          if (!up.ok) out.skipped.push({ name: up.name, error: up.error });
-          else {
+          const key = temp[i]!.id;
+          if (!up.ok) {
+            out.skipped.push({ name: up.name, error: up.error });
+            patchSlot(key, { status: 'failed', error: up.error });
+          } else {
             try {
               const r = await api<PhotosRes>(`/books/${bookId}/photos`, { body: { uploads: [up.ref], L, single, side } });
               out.added.push(...r.added);
@@ -383,9 +474,17 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
               out.monthFull ||= !!r.monthFull;
               out.skipped.push(...r.skipped);
               out.content = r;
+              const id = r.added[0]?.id;
+              if (id) patchSlot(key, { status: 'ready', id });
+              else patchSlot(key, { status: 'failed', error: r.skipped[0]?.error ?? noRoom() });
             } catch (e) {
-              if (e instanceof ApiError && e.status === 400 && /full|no photo slots/i.test(e.message)) out.left += 1;
-              else out.skipped.push({ name: up.ref.name, error: errorMessage(e) });
+              if (e instanceof ApiError && e.status === 400 && /full|no photo slots/i.test(e.message)) {
+                out.left += 1;
+                patchSlot(key, { status: 'failed', error: noRoom() });
+              } else {
+                out.skipped.push({ name: up.ref.name, error: errorMessage(e) });
+                patchSlot(key, { status: 'failed', error: errorMessage(e) });
+              }
             }
           }
           // Show what's done so far, with previews for the photos still to come.
@@ -404,11 +503,15 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
       });
       setBusy(temp.map((t) => t.id), false);
       urls.forEach((u) => URL.revokeObjectURL(u));
+      setReview((r) => r && { done: true, slots: r.slots.map((x) => (x.status === 'uploading' ? { ...x, status: 'failed', error: "This one didn't upload." } : x)) });
       // Previews of files that never made it (offline, refused) go; the server's pages are the truth.
       setPages((pages) => pages.map((pg) => (pg.photos.some((p) => p.id.startsWith('tmp-')) ? { ...pg, photos: pg.photos.filter((p) => !p.id.startsWith('tmp-')) } : pg)));
       if (!res) return;
       if (res.content) setContent(res.content);
       else await refresh();
+      if (opts.autoCaption) for (const p of res.added) void regen(p.id);
+      if (reviewOpen.current) return;
+      if (res.added[0]) opts.select(res.added[0].id);
       const skipped = res.skipped.length ? ` ${res.skipped.length} couldn't be added: ${res.skipped.map((x) => x.error).filter((v, i, a) => a.indexOf(v) === i).join(' ')}` : '';
       const full = res.monthFull ? `${chapterName} holds 50 photos` : 'This spread is full';
       if (!res.added.length) {
@@ -422,8 +525,6 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
         );
       } else if (res.left) toast(`${res.left} photo${res.left > 1 ? 's' : ''} didn't fit. ${full}.${skipped}`);
       else if (skipped) toast(skipped.trim());
-      if (res.added[0]) opts.select(res.added[0].id);
-      if (opts.autoCaption) for (const p of res.added) void regen(p.id);
     },
 
     async replaceHero(list: FileList | File[]) {

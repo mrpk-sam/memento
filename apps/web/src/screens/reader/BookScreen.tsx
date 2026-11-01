@@ -4,6 +4,7 @@ import { useBook, useLibrary, useThemes } from '../../api/hooks';
 import { MEDIA_ACCEPT } from '../../lib/upload';
 import { EditPanel } from './EditPanel';
 import { Reader } from './Reader';
+import { UploadReview } from './UploadReview';
 import { useBookEditor } from './useBookEditor';
 
 /** The reader with its editor wired in. */
@@ -49,6 +50,7 @@ export function BookScreen() {
           },
         }}
       />
+      {editor.review && content && <UploadReview content={content} editor={editor} />}
       <input
         ref={photosRef}
         type="file"
