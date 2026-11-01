@@ -28,7 +28,8 @@ export interface EditSlot {
   panel: (args: { L: number; single: boolean; ctx: BookCtx; goTo: (t: number) => void; selPhoto: string | null; setSelPhoto: (id: string | null) => void }) => ReactNode;
   pageDrop?: (side: 'L' | 'R', files: FileList, L: number, single: boolean) => void;
   /** Opens the photo picker for an empty page. */
-  pickPhotos?: (side: 'L' | 'R', L: number, single: boolean) => void;
+  /** Opens the file picker for a page. `done` runs once the picker is cancelled, or the upload and its review sheet are finished. */
+  pickPhotos?: (side: 'L' | 'R', L: number, single: boolean, done?: () => void) => void;
   /** Rearranges a photo by drag and drop. */
   movePhoto?: (photoId: string, toIdx: number, position: number) => void;
   onHero?: () => void;
@@ -57,6 +58,8 @@ export function Reader({ edit: editSlot, loading }: { edit?: EditSlot; loading?:
   const [closed, setClosed] = useState(false);
   const [closing, setClosing] = useState(false);
   const [editing, setEditing] = useState(startEditing);
+  /** True while editing only because "Add photos" was tapped from read mode: the book goes back to reading after. */
+  const tileEdit = useRef(false);
   const [preview, setPreview] = useState(false);
   const [selPhoto, setSelPhoto] = useState<string | null>(null);
   const [pinOpen, setPinOpen] = useState(false);
@@ -387,6 +390,7 @@ export function Reader({ edit: editSlot, loading }: { edit?: EditSlot; loading?:
   const editLocked = book.locked && !book.canEdit;
 
   const setRead = () => {
+    tileEdit.current = false;
     setEditing(false);
     setPreview(false);
     setSelPhoto(null);
@@ -522,14 +526,17 @@ export function Reader({ edit: editSlot, loading }: { edit?: EditSlot; loading?:
   // Clicking an empty photo area or the "Add photos" tile picks photos. While reading it starts
   // editing first, and opens the picker in the same tap when no PIN is needed (a browser only
   // opens a file picker straight from a tap, so after a PIN the person taps again).
+  // Editing that started from the tile ends when the picker is cancelled or the upload is done,
+  // so reading on doesn't open photo menus.
   const emptyFor = (side: 'L' | 'R') => {
-    const pick = editSlot?.pickPhotos ? () => editSlot.pickPhotos!(side, L, single) : undefined;
+    const pick = editSlot?.pickPhotos ? () => editSlot.pickPhotos!(side, L, single, tileEdit.current ? () => tileEdit.current && setRead() : undefined) : undefined;
     if (panelOn) return pick;
     if (editing) return undefined;
     return () => {
-      const straight = online && !editLocked;
+      if (!online) return setEdit();
+      tileEdit.current = true;
       setEdit();
-      if (straight) pick?.();
+      if (!editLocked) pick?.();
     };
   };
   const leftShown = !single && !(coverOn && coverShift) && !(coverOn && coverDeg === 0);
@@ -558,7 +565,7 @@ export function Reader({ edit: editSlot, loading }: { edit?: EditSlot; loading?:
           )}
           <div className={s.seg}>
             <button onClick={setRead} style={{ background: editing ? 'transparent' : 'var(--surface)', color: editing ? 'var(--ink2)' : 'var(--ink)' }}>Read</button>
-            <button onClick={setEdit} style={{ background: editing ? 'var(--surface)' : 'transparent', color: editing ? 'var(--ink)' : 'var(--ink2)' }}>
+            <button onClick={() => ((tileEdit.current = false), setEdit())} style={{ background: editing ? 'var(--surface)' : 'transparent', color: editing ? 'var(--ink)' : 'var(--ink2)' }}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
               Edit
               {editLocked && (
