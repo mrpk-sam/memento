@@ -426,7 +426,7 @@ export const ScrapbookPage = memo(function ScrapbookPage({ page, scale, editMode
                 </div>
                 );
               })}
-              {edit && onEmpty && !dragId && photos.length < capacity({ layout }) && (
+              {onEmpty && !dragId && photos.length < capacity({ layout }) && (
                 <button
                   type="button"
                   className={s.addTile}

@@ -519,9 +519,19 @@ export function Reader({ edit: editSlot, loading }: { edit?: EditSlot; loading?:
     dragId: photoDrag?.pid ?? null,
     dropHint,
   };
-  // Clicking an empty photo area: pick photos while editing, or start editing while reading.
-  const emptyFor = (side: 'L' | 'R') =>
-    panelOn ? (editSlot?.pickPhotos ? () => editSlot.pickPhotos!(side, L, single) : undefined) : editing ? undefined : setEdit;
+  // Clicking an empty photo area or the "Add photos" tile picks photos. While reading it starts
+  // editing first, and opens the picker in the same tap when no PIN is needed (a browser only
+  // opens a file picker straight from a tap, so after a PIN the person taps again).
+  const emptyFor = (side: 'L' | 'R') => {
+    const pick = editSlot?.pickPhotos ? () => editSlot.pickPhotos!(side, L, single) : undefined;
+    if (panelOn) return pick;
+    if (editing) return undefined;
+    return () => {
+      const straight = online && !editLocked;
+      setEdit();
+      if (straight) pick?.();
+    };
+  };
   const leftShown = !single && !(coverOn && coverShift) && !(coverOn && coverDeg === 0);
 
   return (
