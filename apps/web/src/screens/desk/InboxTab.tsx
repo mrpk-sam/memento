@@ -8,6 +8,7 @@ import type { InboxData, InboxItem } from '../../api/types';
 import { useToast } from '../../lib/toast';
 import { typeOut } from '../../lib/typeOut';
 import { MEDIA_ACCEPT, isVideoFile, mediaFiles, screenFiles, uploadFiles } from '../../lib/upload';
+import { keepAwake, retrying } from '../../lib/awake';
 import d from './Desk.module.css';
 import s from './InboxTab.module.css';
 
@@ -49,11 +50,11 @@ export function InboxTab() {
   async function caption(it: InboxItem) {
     mark([it.id], true);
     try {
-      const { caption: text } = await api<{ caption: string }>('/ai/caption', { body: { subject: it.subject, context: 'family photo inbox', inboxItemId: it.id } });
+      const { caption: text } = await retrying(() => api<{ caption: string }>('/ai/caption', { body: { subject: it.subject, context: 'family photo inbox', inboxItemId: it.id } }));
       mark([it.id], false);
       setItems((items) => items.map((x) => (x.id === it.id ? { ...x, caption: '' } : x)));
       await typeOut(text, (t) => setItems((items) => items.map((x) => (x.id === it.id ? { ...x, caption: t } : x))));
-      await api(`/inbox/${it.id}`, { method: 'PATCH', body: { caption: text } });
+      await retrying(() => api(`/inbox/${it.id}`, { method: 'PATCH', body: { caption: text } }));
     } catch (e) {
       mark([it.id], false);
       toast(errorMessage(e));
@@ -84,6 +85,7 @@ export function InboxTab() {
       return { id: `tmp-${Date.now()}-${i}`, subject: f.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' '), caption: '', thumbUrl: u, displayUrl: u, videoUrl: null, durationMs: null, destBookId: null, destPageId: null, createdAt: '', pending: true };
     });
     setTemp((t) => [...t, ...placeholders]);
+    const release = keepAwake();
     try {
       const results = await uploadFiles(files);
       // One short request per photo, so a big batch can't hit a proxy timeout.
@@ -92,7 +94,8 @@ export function InboxTab() {
         if (!up.ok) failed.push(up.error);
         else {
           try {
-            const res = await api<{ items: InboxItem[]; skipped: { name: string; error: string }[] }>('/inbox', { body: { uploads: [up.ref] } });
+            // Safe to send again: the server hands back the item it already made for this upload.
+            const res = await retrying(() => api<{ items: InboxItem[]; skipped: { name: string; error: string }[] }>('/inbox', { body: { uploads: [up.ref] } }));
             setItems((items) => [...items, ...res.items]);
             failed.push(...res.skipped.map((x) => x.error));
             settled.add(files[i]!);
@@ -111,6 +114,7 @@ export function InboxTab() {
     } catch (e) {
       toast(errorMessage(e));
     } finally {
+      release();
       placeholders.forEach((p) => p.thumbUrl && URL.revokeObjectURL(p.thumbUrl));
       setTemp((t) => t.filter((x) => !placeholders.includes(x)));
       void qc.invalidateQueries({ queryKey: qk.inbox });

@@ -38,9 +38,11 @@ export function Lightbox({ lb, list, vw, vh, onClose, onStep }: { lb: LbState; l
   const swipe = useRef<number | null>(null);
   useEffect(() => setLoaded(null), [lb.pid]);
   if (!p) return null;
-  // A portrait video gets a tall frame (as tall as the screen allows), not a letterbox.
-  const portrait = !!p.video && !!p.width && !!p.height && p.height > p.width;
-  const imgH = portrait ? Math.round(Math.min(vh - 210, (W * p.height!) / p.width!)) : frameH;
+  // The frame takes the photo's own shape (as tall as the screen allows), so nothing is cut off.
+  // A photo too tall for the screen is shown whole inside it.
+  const sized = !!p.width && !!p.height;
+  const imgH = sized ? Math.round(Math.max(W * 0.5, Math.min(vh - 210, (W * p.height!) / p.width!))) : frameH;
+  const bg = p.src && !p.video ? '#fff' : `repeating-linear-gradient(135deg, rgba(255,255,255,.22) 0 12px, transparent 12px 24px), oklch(0.84 0.055 ${p.hue ?? 60})`;
   const arrowX = vw < 600 ? 8 : 24;
   const backOp = lb.open ? 1 : 0;
   const stop = (fn: () => void) => (e: React.MouseEvent) => {
@@ -65,7 +67,7 @@ export function Lightbox({ lb, list, vw, vh, onClose, onStep }: { lb: LbState; l
         style={{ width: W, transform: lb.open ? 'translate(0px,0px) scale(1) rotate(-1deg)' : lb.from, transition: lb.anim ? 'transform .46s cubic-bezier(.2,.9,.25,1.05)' : 'none' }}
       >
         <div className={s.tape} />
-        <div className={s.img} style={{ height: imgH, background: `repeating-linear-gradient(135deg, rgba(255,255,255,.22) 0 12px, transparent 12px 24px), oklch(0.84 0.055 ${p.hue ?? 60})` }}>
+        <div className={s.img} style={{ height: imgH, background: bg }}>
           {p.video ? (
             <>
               <video key={p.id} src={p.video} poster={p.full ?? p.src ?? undefined} controls playsInline preload="metadata" className={s.video} />
@@ -73,8 +75,8 @@ export function Lightbox({ lb, list, vw, vh, onClose, onStep }: { lb: LbState; l
             </>
           ) : (
             <>
-              {p.src && <img src={p.src} alt="" className={s.cover} />}
-              {p.full && p.full !== p.src && <img src={p.full} alt="" className={s.cover} style={{ opacity: loaded === p.id ? 1 : 0 }} onLoad={() => setLoaded(p.id)} />}
+              {p.src && <img src={p.src} alt="" className={s.cover} style={{ objectFit: sized ? 'contain' : 'cover' }} />}
+              {p.full && p.full !== p.src && <img src={p.full} alt="" className={s.cover} style={{ objectFit: sized ? 'contain' : 'cover', opacity: loaded === p.id ? 1 : 0 }} onLoad={() => setLoaded(p.id)} />}
               {!p.src && <span className={s.subject}>{p.subject}</span>}
             </>
           )}

@@ -2,7 +2,7 @@ import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { and, eq, gt, inArray, isNull } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { LIMITS, MONTH_CAPACITY, Month, PageHeader, STICKER_PACKS, canEditBook, chapterList, chapterRoom, chapterSpan, chapterStart, compactMonth, moveManyToChapter, movePhoto, placeBack, placeOnSpread, setMonth, withinCapacity, type ModelPhoto } from '@memento/shared';
+import { LIMITS, MONTH_CAPACITY, Month, PageHeader, STICKER_PACKS, canEditBook, chapterList, chapterRoom, chapterSpan, chapterStart, compactMonth, moveManyToChapter, movePhoto, placeBack, placeOnSpread, setMonth, withinCapacity, yearSpread, type ModelPhoto } from '@memento/shared';
 import type { Db } from '../db/client.js';
 import * as s from '../db/schema.js';
 import { loadPages, type PageDto } from '../lib/content.js';
@@ -125,15 +125,26 @@ export async function photoRoutes(app: FastifyInstance) {
       z.object({ uploads: z.array(UploadRef).min(1).max(MAX_FILES), L: z.number().int().min(0), single: z.boolean(), side: z.enum(['L', 'R']).optional() }),
       req.body,
     );
+    // A photo's id is its upload's id. So a retry after a lost reply (a phone that locked
+    // mid-request) finds its photo already made, and gets it back instead of an error.
+    const already = await db
+      .select({ id: s.photos.id, month: s.photos.month })
+      .from(s.photos)
+      .where(and(eq(s.photos.bookId, book.id), inArray(s.photos.id, v.uploads.map((u) => u.id)), isNull(s.photos.deletedAt)));
+    const todo = v.uploads.filter((u) => !already.some((a) => a.id === u.id));
+    if (!todo.length) {
+      const content = await loadBookContent(db, user, book.id);
+      return { kind: yearSpread(content.pages, v.L) != null ? 'year' : 'pages', added: already, left: 0, monthFull: false, skipped: [], ...content };
+    }
     // Check for room before doing any image work.
-    const probe = placeOnSpread(await loadPages(db, book.id), v.L, v, v.uploads.map((u) => ({ id: u.id, month: null })));
+    const probe = placeOnSpread(await loadPages(db, book.id), v.L, v, todo.map((u) => ({ id: u.id, month: null })));
     if (probe.kind === 'no-slots') throw badRequest('This spread has no photo slots. Turn to a year or month first.');
     if (probe.kind === 'year-full') throw badRequest('This year is full. Remove a photo, or add more to a month chapter.');
 
     // Image work runs outside the lock; placing reads the pages afresh inside it, so two uploads
     // at once can't both take the same free slot.
-    const { ok, skipped } = await readUploads(user.id, v.uploads);
-    const fresh = ok.map((x) => ({ ...x, photoId: randomUUID() }));
+    const { ok, skipped } = await readUploads(user.id, todo);
+    const fresh = ok.map((x) => ({ ...x, photoId: x.ref.id }));
     return withLock(book.id, async () => {
       let pages = await loadPages(db, book.id);
       // A month chapter grows extra pages to take the upload, up to its limit of 50.
@@ -145,7 +156,7 @@ export async function photoRoutes(app: FastifyInstance) {
       }
       const r = placeOnSpread(pages, v.L, v, fresh.map((f) => ({ id: f.photoId, month: null })));
       if (r.kind === 'no-slots' || r.kind === 'year-full') {
-        await cleanup(user.id, v.uploads);
+        await cleanup(user.id, todo);
         throw badRequest(r.kind === 'year-full' ? 'This year is full. Remove a photo, or add more to a month chapter.' : 'This spread is full.');
       }
       const placedIds = new Set(r.kind === 'year' ? r.added.map((a) => a.id) : r.placed);
@@ -175,10 +186,10 @@ export async function photoRoutes(app: FastifyInstance) {
         await persistLayout(tx as unknown as Db, book.id, r.pages);
         await tx.update(s.books).set({ updatedAt: new Date() }).where(eq(s.books.id, book.id));
       });
-      await cleanup(user.id, v.uploads);
+      await cleanup(user.id, todo);
       return {
         kind: r.kind,
-        added: r.kind === 'year' ? r.added : placed.map((f) => ({ id: f.photoId, month: null })),
+        added: [...already, ...(r.kind === 'year' ? r.added : placed.map((f) => ({ id: f.photoId, month: null })))],
         left: r.left,
         // A month that's full says so, rather than "this spread is full".
         monthFull: inMonth && r.left > 0,

@@ -1,5 +1,6 @@
 import { LIMITS } from '@memento/shared';
 import { api } from '../api/client';
+import { retrying } from './awake';
 
 export interface UploadRef { id: string; name: string }
 
@@ -54,16 +55,19 @@ export async function uploadFiles(files: File[]): Promise<UploadResult[]> {
   const results: UploadResult[] = [];
   for (let at = 0; at < files.length; at += PER_REQUEST) {
     const group = files.slice(at, at + PER_REQUEST);
-    const { uploads } = await api<{ uploads: { id: string; url: string; headers: Record<string, string> }[] }>('/uploads', {
-      body: { files: group.map((f) => ({ name: f.name, type: f.type, size: f.size })) },
-    });
+    const { uploads } = await retrying(() =>
+      api<{ uploads: { id: string; url: string; headers: Record<string, string> }[] }>('/uploads', {
+        body: { files: group.map((f) => ({ name: f.name, type: f.type, size: f.size })) },
+      }),
+    );
     results.push(
       ...(await Promise.all(
         uploads.map(async (u, i): Promise<UploadResult> => {
           const file = group[i]!;
           try {
             const sameOrigin = u.url.startsWith('/');
-            const res = await fetch(u.url, { method: 'PUT', body: file, headers: u.headers, credentials: sameOrigin ? 'same-origin' : 'omit' });
+            // A phone that locks mid-upload drops the request; it's sent again once the screen is back.
+            const res = await retrying(() => fetch(u.url, { method: 'PUT', body: file, headers: u.headers, credentials: sameOrigin ? 'same-origin' : 'omit' }));
             if (!res.ok) throw new Error();
             return { ok: true, ref: { id: u.id, name: file.name } };
           } catch {

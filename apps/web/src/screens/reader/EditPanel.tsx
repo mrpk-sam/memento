@@ -368,7 +368,7 @@ export function EditPanel({ content, themes, L, single, goTo, selPhoto, setSelPh
           {editor.bulk ? (
             <div className={s.card} role="status">
               <div className={s.askText}>
-                {editor.bulk.waiting ? 'Waiting a moment for the AI to catch up…' : `Writing ${Math.min(editor.bulk.done + 1, editor.bulk.total)} of ${editor.bulk.total}…`}
+                {editor.bulk.waiting === 'limit' ? 'Waiting a moment for the AI to catch up…' : editor.bulk.waiting === 'paused' ? 'Paused. It carries on when the screen is back on.' : `Writing ${Math.min(editor.bulk.done + 1, editor.bulk.total)} of ${editor.bulk.total}…`}
               </div>
               <div className={s.bar}>
                 <span style={{ width: `${(editor.bulk.done / editor.bulk.total) * 100}%` }} />

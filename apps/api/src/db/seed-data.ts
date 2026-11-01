@@ -48,10 +48,15 @@ Style:
 - Lowercase is fine. Fragments are fine.
 - Gentle humor is welcome when the photo invites it.
 
+Names:
+- This is {owner}'s book. When {owner} is one person, they're usually the one in the photo: call them {owner} instead of "she", "he" or "the baby" in most captions.
+- When the book belongs to a couple or a family, use a name only when it's clear who is who.
+- Don't name anyone else unless the context names them.
+
 Never:
 - Use images that aren't in the photo (no dawn, tides, roots, seeds, light, stars, or "the world" unless they're actually visible).
 - Write something that could caption a different photo of the same kind.
-- Invent facts you can't see (names, ages, places, what happened before or after).
+- Invent facts you can't see (other names, ages, places, what happened before or after).
 - Use clichés: cherish, memories, precious, blessed, forever, little one, bundle of joy.
 - Describe the photo flatly ("dad holding baby on couch").
 

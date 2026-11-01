@@ -64,9 +64,15 @@ export async function inboxRoutes(app: FastifyInstance) {
     const created: Item[] = [];
     const skipped: { name: string; error: string }[] = [];
     for (const u of uploads) {
+      // An item's id is its upload's id, so a retry after a lost reply gets the item it made.
+      const [done] = await db.select().from(s.inboxItems).where(and(eq(s.inboxItems.id, u.id), eq(s.inboxItems.uploadedBy, user.id)));
+      if (done) {
+        if (!done.deletedAt) created.push(done);
+        continue;
+      }
       try {
         const img = await processMedia(await readUpload(storage, user.id, u.id));
-        const id = randomUUID();
+        const id = u.id;
         await Promise.all([
           storage.put(inboxKey(id, 'orig'), img.orig),
           storage.put(inboxKey(id, '1600'), img.display),

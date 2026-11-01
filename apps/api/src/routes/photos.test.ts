@@ -86,6 +86,17 @@ describe('adding photos to a year spread', () => {
     expect((await sharp(img.rawPayload).metadata()).width).toBe(400);
   });
 
+  it('gives a retried request the photo it already made, with no duplicate', async () => {
+    const ups = await upload(admin, ['retry.jpg']);
+    const first = await api(admin, 'POST', `/api/books/${bookId}/photos`, { uploads: ups, L: 4, single: false });
+    const count = (await content()).pages.reduce((n, pg) => n + pg.photos.length, 0);
+    // The reply was lost (the phone locked); the app sends the same request again.
+    const again = await api(admin, 'POST', `/api/books/${bookId}/photos`, { uploads: ups, L: 4, single: false });
+    expect(again.statusCode).toBe(200);
+    expect(again.json().added.map((a: { id: string }) => a.id)).toEqual(first.json().added.map((a: { id: string }) => a.id));
+    expect((await content()).pages.reduce((n, pg) => n + pg.photos.length, 0)).toBe(count);
+  });
+
   it('refuses a spread with no photo slots', async () => {
     const ups = await upload(admin, ['x.jpg']);
     const res = await api(admin, 'POST', `/api/books/${bookId}/photos`, { uploads: ups, L: 0, single: false });

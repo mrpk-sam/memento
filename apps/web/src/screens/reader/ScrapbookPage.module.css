@@ -39,6 +39,8 @@
 .heroCap { font: 500 21px/1.1 var(--font-script); padding-top: 8px; min-height: 23px; }
 .replace { position: absolute; right: 8px; bottom: 8px; display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; background: rgba(255,255,255,.92); font: 600 11px/1 var(--font-ui); box-shadow: 0 2px 6px rgba(0,0,0,.15); }
 .cover { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* Page slots crop to fit. Faces and heads sit high in most photos, so keep the top in view. */
+.photoImg .cover { object-position: 50% 28%; }
 .subject { position: relative; font: 500 9.5px/1.25 ui-monospace, Menlo, monospace; color: rgba(40,30,20,.55); padding: 6px; }
 
 /* Contents and chapters */

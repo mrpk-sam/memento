@@ -5,6 +5,7 @@ import { ApiError, api, errorMessage } from '../../api/client';
 import { qk } from '../../api/hooks';
 import type { BookContent, PageDto, PhotoDto } from '../../api/types';
 import { useToast } from '../../lib/toast';
+import { keepAwake, retryable, retrying, whenAwake } from '../../lib/awake';
 import { imageFiles, isVideoFile, mediaFiles, screenFiles, uploadFiles } from '../../lib/upload';
 
 type Saved = 'All changes saved' | 'Saving…' | 'Saved just now';
@@ -247,7 +248,7 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
         updatePhoto(photoId, { caption: '', aiCaption: caption });
         await typeOut(caption, (t) => updatePhoto(photoId, { caption: t }));
       }
-      await save(() => api(`/photos/${photoId}`, { method: 'PATCH', body: { caption } }));
+      await save(() => retrying(() => api(`/photos/${photoId}`, { method: 'PATCH', body: { caption } })));
       return null;
     } catch (e) {
       setBusy([photoId], false);
@@ -255,15 +256,32 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
     }
   };
 
+  /**
+   * writeCaption, tried again after the AI's rate limit (15s) or a dropped request (once the
+   * screen is back on). `onWait` says what it's waiting for, then null when it carries on.
+   */
+  const writePatiently = async (photoId: string, quick = false, onWait?: (w: null | 'limit' | 'paused') => void, stopped = () => false) => {
+    let err = await writeCaption(photoId, quick);
+    for (let tries = 0; err && tries < 8 && !stopped(); tries++) {
+      const limit = err instanceof ApiError && err.status === 429;
+      if (!limit && !retryable(err)) break;
+      onWait?.(limit ? 'limit' : 'paused');
+      await (limit ? new Promise((r) => setTimeout(r, 15_000)) : whenAwake());
+      onWait?.(null);
+      if (!stopped()) err = await writeCaption(photoId, quick);
+    }
+    return err;
+  };
+
   /** Writes one caption. True on success; a failure is shown as a toast. */
   const regen = async (photoId: string): Promise<boolean> => {
-    const err = await writeCaption(photoId);
+    const err = await writePatiently(photoId);
     if (err) toast(errorMessage(err));
     return !err;
   };
 
   /** Progress of a run of caption rewrites, for the panel. */
-  const [bulk, setBulk] = useState<{ done: number; total: number; waiting: boolean } | null>(null);
+  const [bulk, setBulk] = useState<{ done: number; total: number; waiting: null | 'limit' | 'paused' } | null>(null);
   const bulkStop = useRef(false);
   const bulkOn = useRef(false);
   useEffect(
@@ -290,18 +308,13 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
     const quick = list.length > 15;
     let done = 0;
     let failed: unknown = null;
-    setBulk({ done: 0, total: list.length, waiting: false });
+    setBulk({ done: 0, total: list.length, waiting: null });
+    const release = keepAwake();
     try {
       for (const id of list) {
         if (bulkStop.current) break;
         if (!findPhoto(id)) continue;
-        let err = await writeCaption(id, quick);
-        for (let tries = 0; err instanceof ApiError && err.status === 429 && tries < 6 && !bulkStop.current; tries++) {
-          setBulk((b) => b && { ...b, waiting: true });
-          await new Promise((r) => setTimeout(r, 15_000));
-          setBulk((b) => b && { ...b, waiting: false });
-          if (!bulkStop.current) err = await writeCaption(id, quick);
-        }
+        const err = await writePatiently(id, quick, (waiting) => setBulk((b) => b && { ...b, waiting }), () => bulkStop.current);
         if (bulkStop.current && err) break;
         if (err) {
           failed = err;
@@ -311,6 +324,7 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
         setBulk((b) => b && { ...b, done });
       }
     } finally {
+      release();
       bulkOn.current = false;
       setBulk(null);
     }
@@ -512,7 +526,8 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
 
       type PhotosRes = BookContent & { kind: 'year' | 'pages'; added: { id: string; month: number | null }[]; left: number; monthFull?: boolean; skipped: { name: string; error: string }[] };
       // Files upload in parallel, then each is processed in its own short request, so a
-      // batch never risks a proxy timeout and photos appear one by one.
+      // batch never risks a proxy timeout and photos appear one by one. The screen stays on.
+      const release = keepAwake();
       const res = await save(async () => {
         const results = await uploadFiles(files);
         const out = { kind: probe.kind as 'year' | 'pages', added: [] as { id: string; month: number | null }[], left: 0, monthFull: false, skipped: [...rejected], content: null as PhotosRes | null };
@@ -524,7 +539,8 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
             patchSlot(key, { status: 'failed', error: up.error });
           } else {
             try {
-              const r = await api<PhotosRes>(`/books/${bookId}/photos`, { body: { uploads: [up.ref], L, single, side } });
+              // Safe to send again: the server hands back the photo it already made for this upload.
+              const r = await retrying(() => api<PhotosRes>(`/books/${bookId}/photos`, { body: { uploads: [up.ref], L, single, side } }));
               out.added.push(...r.added);
               out.left += r.left;
               out.monthFull ||= !!r.monthFull;
@@ -557,6 +573,7 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
         // The totals across every photo must win over the last reply's own added/left/skipped.
         return { ...(out.content ?? { book: get()!.book, pages: get()!.pages }), ...out };
       });
+      release();
       setBusy(temp.map((t) => t.id), false);
       urls.forEach((u) => URL.revokeObjectURL(u));
       setReview((r) => r && { done: true, slots: r.slots.map((x) => (x.status === 'uploading' ? { ...x, status: 'failed', error: "This one didn't upload." } : x)) });
@@ -565,7 +582,18 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
       if (!res) return;
       if (res.content) setContent(res.content);
       else await refresh();
-      if (opts.autoCaption) for (const p of res.added) void regen(p.id);
+      // One at a time, so a big batch stays under the AI's rate limit; the screen stays on.
+      if (opts.autoCaption && res.added.length) {
+        const ids = res.added.map((p) => p.id);
+        setBusy(ids, true);
+        const done = keepAwake();
+        void (async () => {
+          for (const id of ids) if (!(await regen(id))) break;
+        })().finally(() => {
+          setBusy(ids, false);
+          done();
+        });
+      }
       if (reviewOpen.current) return;
       if (res.added[0]) opts.select(res.added[0].id);
       const skipped = res.skipped.length ? ` ${res.skipped.length} couldn't be added: ${res.skipped.map((x) => x.error).filter((v, i, a) => a.indexOf(v) === i).join(' ')}` : '';
