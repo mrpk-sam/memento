@@ -1,13 +1,14 @@
 import { and, asc, eq, isNull, max } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { bookOwnerName, captionContext, familyOf } from '@memento/shared';
+import { bookOwnerName, captionContext, captionDetails, chapterList, chapterSpan, chapterStart, familyOf, type PhotoFacts } from '@memento/shared';
 import * as s from '../db/schema.js';
 import { SEED_BASE_PROMPT, SEED_CAPTION_STYLES } from '../db/seed-data.js';
 import { aiReady, chatComplete, listModels, loadAiConfig, writeCaption } from '../lib/ai.js';
 import { encrypt, maskKey, decrypt } from '../lib/crypto.js';
 import { HttpError, badRequest, forbidden, notFound, parse } from '../lib/http.js';
 import { requireAdmin, requireUser } from '../lib/session.js';
+import { loadPages } from '../lib/content.js';
 import { requireEdit } from './content.js';
 
 const SettingsPatch = z
@@ -184,19 +185,45 @@ export async function aiRoutes(app: FastifyInstance) {
       req.body,
     );
     let imageKey: string | null = null;
+    let facts: PhotoFacts = {};
     let bookId: string | null = null;
     let where = v.context ?? null;
     if (v.photoId) {
       const [p] = await db.select().from(s.photos).where(and(eq(s.photos.id, v.photoId), isNull(s.photos.deletedAt)));
       if (!p) throw notFound('That photo no longer exists');
       await requireEdit(db, user, p.bookId);
-      imageKey = p.thumbKey;
+      // The 1600px image, so the model can see small details (a fist round a finger, odd socks).
+      imageKey = p.displayKey ?? p.thumbKey;
       bookId = p.bookId;
+      // Where it sits in the book: its chapter's name, what the family wrote there, and the
+      // captions around it.
+      const pages = await loadPages(db, p.bookId);
+      const at = pages.findIndex((pg) => pg.photos.some((x) => x.id === p.id));
+      const start = at >= 0 ? chapterStart(pages, at) : null;
+      const span = start != null ? chapterSpan(pages, start) : at >= 0 ? [at] : [];
+      const around = span.flatMap((i) => pages[i]?.photos ?? []);
+      const self = around.findIndex((x) => x.id === p.id);
+      const nearby = around
+        .map((x, i) => ({ x, d: Math.abs(i - self) }))
+        .filter(({ x }) => x.id !== p.id && x.caption.trim())
+        .sort((a, b) => a.d - b.d)
+        .map(({ x }) => x.caption);
+      const head = start != null ? pages[start] : null;
+      const chapter = start != null ? chapterList(pages).find((c) => c.idx === start)?.name : null;
+      if (chapter) where = chapter;
+      facts = {
+        takenAt: p.takenAt,
+        month: p.month,
+        videoMs: p.durationMs,
+        notes: [head?.header?.subtitle, head?.header?.note, ...span.map((i) => pages[i]?.journal)],
+        nearby,
+      };
     } else {
       if (user.access !== 'admin') throw forbidden('Only the admin can do that');
       if (v.inboxItemId) {
         const [it] = await db.select().from(s.inboxItems).where(eq(s.inboxItems.id, v.inboxItemId));
-        imageKey = it?.thumbKey ?? null;
+        imageKey = it?.displayKey ?? it?.thumbKey ?? null;
+        facts = { videoMs: it?.durationMs };
         bookId = it?.destBookId ?? null;
         // The chapter picked for it says more than "family photo inbox".
         if (it?.destPageId) {
@@ -222,7 +249,7 @@ export async function aiRoutes(app: FastifyInstance) {
     if (c.vision && imageKey) image = await storage.get(imageKey).catch(() => null);
     if (!v.subject && !image) throw badRequest('Describe the photo first');
     try {
-      const caption = await writeCaption(c, v.subject || 'a family photo', where, image, { fetch: aiFetch });
+      const caption = await writeCaption(c, v.subject || 'a family photo', where, image, { fetch: aiFetch, details: captionDetails(facts) });
       // Remember what the AI wrote, so a caption changed later can be told apart (hand-typed).
       if (v.photoId) await db.update(s.photos).set({ aiCaption: caption }).where(eq(s.photos.id, v.photoId));
       else if (v.inboxItemId) await db.update(s.inboxItems).set({ aiCaption: caption }).where(eq(s.inboxItems.id, v.inboxItemId));

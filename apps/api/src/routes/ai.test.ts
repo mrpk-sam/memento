@@ -155,7 +155,10 @@ describe('captions know which book the photo is in', () => {
     await api(admin, 'POST', '/api/ai/caption', { subject: 'lake', photoId: photo.id, context: '2026 in photos A year still being written' });
     const [sys, user] = calls[0]!.body.messages;
     expect(sys!.content).toMatch(/^For the Brooks family, in Nadia & Omar\./);
-    expect(user!.content).toBe("Photo: lake\nContext: Nadia & Omar's book · 2026 in photos A year still being written");
+    // The server reads the chapter from the book: its name, then what the family wrote there.
+    const lines = (user!.content as string).split('\n');
+    expect(lines.slice(0, 2)).toEqual(['Photo: lake', "Context: Nadia & Omar's book · 2026 in photos"]);
+    expect(lines).toContain('What the family wrote in this chapter: A year still being written');
   });
 
   it('falls back to the Settings family name for households without a surname', async () => {

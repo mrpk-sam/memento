@@ -23,13 +23,57 @@ export function fillPrompt(template: string, s: Pick<PromptSettings, 'familyName
 
 /**
  * system = fill(base) + "\n\n" + fill(style)
- * user   = "Photo: {subject}\nContext: {context || 'the {family} family scrapbook'}"
+ * user   = "Photo: {subject}\nContext: {context || 'the {family} family scrapbook'}" + one line per detail
+ * A camera file name ("IMG 4641") says nothing, so the model is pointed at the image instead.
  */
-export function buildCaptionPrompt(s: PromptSettings, subject: string, context?: string | null) {
+export function buildCaptionPrompt(s: PromptSettings, subject: string, context?: string | null, details: string[] = []) {
+  const what = cameraName(subject) ? 'see the image' : subject.trim() || 'see the image';
   return {
     system: `${fillPrompt(s.basePrompt, s)}\n\n${fillPrompt(s.stylePrompt, s)}`,
-    user: `Photo: ${subject}\nContext: ${context?.trim() || `the ${s.familyName} family scrapbook`}`,
+    user: [`Photo: ${what}`, `Context: ${context?.trim() || `the ${s.familyName} family scrapbook`}`, ...details].join('\n'),
   };
+}
+
+/** True for names cameras and phones give files ("IMG 4641", "PXL_20260101_123456", "DSC01234"). */
+export function cameraName(subject: string): boolean {
+  const t = subject.trim();
+  if (!t) return false;
+  return /^(img|dsc[nf]?|pxl|mvimg|vid|mov|gopr|dji|photo|image|screenshot|whatsapp image|signal|snapchat|fb_img|p)[\s_-]*\d[\d\s_.-]*\w{0,8}$/i.test(t) || /^[\d\s_.-]+$/.test(t) || /^[0-9a-f-]{16,}$/i.test(t);
+}
+
+export interface PhotoFacts {
+  /** When the camera took it. EXIF has no time zone, so it's stored as UTC wall-clock time. */
+  takenAt?: Date | string | null;
+  /** The month a year-spread photo is tied to (0-11). */
+  month?: number | null;
+  /** The chapter's subtitle, header note and journal: what the family wrote about it. */
+  notes?: (string | null | undefined)[];
+  /** Set for a video: the image is a frame from it. */
+  videoMs?: number | null;
+  /** Captions already on nearby photos, so a new one doesn't repeat them. */
+  nearby?: string[];
+}
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const clip = (t: string, n: number) => (t.length > n ? `${t.slice(0, n - 1).trimEnd()}…` : t);
+
+/** Extra lines for the caption request: everything known about the photo besides the image. */
+export function captionDetails(f: PhotoFacts): string[] {
+  const out: string[] = [];
+  const d = f.takenAt ? new Date(f.takenAt) : null;
+  if (d && !Number.isNaN(d.getTime())) {
+    const h = d.getUTCHours();
+    const part = h < 5 ? 'at night' : h < 12 ? 'in the morning' : h < 17 ? 'in the afternoon' : h < 21 ? 'in the evening' : 'at night';
+    out.push(`Taken: ${DAY_NAMES[d.getUTCDay()]} ${d.getUTCDate()} ${MONTH_NAMES[d.getUTCMonth()]} ${d.getUTCFullYear()}, ${part}`);
+  }
+  if (f.month != null && MONTH_NAMES[f.month]) out.push(`Month in the book: ${MONTH_NAMES[f.month]}`);
+  const notes = (f.notes ?? []).map((n) => n?.trim() ?? '').filter(Boolean);
+  if (notes.length) out.push(`What the family wrote in this chapter: ${clip(notes.join(' · ').replace(/\s+/g, ' '), 400)}`);
+  if (f.videoMs) out.push(`This is a frame from a ${Math.max(1, Math.round(f.videoMs / 1000))}-second video.`);
+  const nearby = (f.nearby ?? []).map((c) => c.trim()).filter(Boolean).slice(0, 8);
+  if (nearby.length) out.push(`Captions already on nearby photos (use different images and wording): ${nearby.map((c) => `"${clip(c, 80)}"`).join(' · ')}`);
+  return out;
 }
 
 /** "Luca's book · July · Canada Day & the Fourth": whose book first, then where in it. */

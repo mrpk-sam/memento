@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCaptionPrompt, captionContext, cleanCaption, fillPrompt } from './captions.js';
+import { buildCaptionPrompt, cameraName, captionContext, captionDetails, cleanCaption, fillPrompt } from './captions.js';
 
 const settings = {
   basePrompt: 'You write captions for the {family} family scrapbook.\n- At most {maxLen} characters.\n- {emojiRule}',
@@ -89,5 +89,32 @@ describe('cleanCaption', () => {
     cleanCaption('a' + '"'.repeat(50_000) + 'b', 60);
     cleanCaption('a' + ' '.repeat(50_000) + 'b'.repeat(100), 60);
     expect(performance.now() - t0).toBeLessThan(100);
+  });
+});
+
+describe('photo details for captions', () => {
+  it('spots camera file names, and points the model at the image instead', () => {
+    for (const n of ['IMG 4641', 'IMG_4641', 'PXL_20260101_123456789', 'DSC01234', 'MVIMG 2026', '20261024 160439', 'Screenshot 2026-10-24']) expect(cameraName(n), n).toBe(true);
+    for (const n of ['grandma pearl 80th', 'photo of the lake', 'dock', '']) expect(cameraName(n), n).toBe(false);
+    const p = buildCaptionPrompt({ basePrompt: 'b', stylePrompt: 's', familyName: 'Rivera', maxLen: 60, emoji: false }, 'IMG 4641', 'October 2026', ['Taken: x']);
+    expect(p.user).toBe('Photo: see the image\nContext: October 2026\nTaken: x');
+  });
+
+  it('lists the date, month, notes, video and nearby captions', () => {
+    const lines = captionDetails({
+      takenAt: '2026-10-24T16:04:39.000Z',
+      month: 9,
+      notes: ['', 'Leaf season', null, 'First time in the leaves'],
+      videoMs: 12_400,
+      nearby: ['her whole fist, one of his fingers', ' '],
+    });
+    expect(lines).toEqual([
+      'Taken: Saturday 24 October 2026, in the afternoon',
+      'Month in the book: October',
+      'What the family wrote in this chapter: Leaf season · First time in the leaves',
+      'This is a frame from a 12-second video.',
+      'Captions already on nearby photos (use different images and wording): "her whole fist, one of his fingers"',
+    ]);
+    expect(captionDetails({})).toEqual([]);
   });
 });

@@ -77,9 +77,9 @@ export async function chatComplete(c: AiConfig, messages: unknown[], opts: { fet
 }
 
 /** Builds the prompt, calls the model (with the 400px image when vision is on), and cleans the reply. */
-export async function writeCaption(c: AiConfig, subject: string, context: string | null, image: Buffer | null, opts: { fetch?: Fetch } = {}) {
+export async function writeCaption(c: AiConfig, subject: string, context: string | null, image: Buffer | null, opts: { fetch?: Fetch; details?: string[] } = {}) {
   if (!aiReady(c)) throw new HttpError(400, "AI captions aren't set up yet. Add an endpoint and model in Editor's Desk → AI captions.");
-  const p = buildCaptionPrompt(c, subject, context);
+  const p = buildCaptionPrompt(c, subject, context, opts.details);
   const user =
     c.vision && image
       ? [
