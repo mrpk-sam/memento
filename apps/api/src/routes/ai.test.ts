@@ -102,6 +102,17 @@ describe('writing captions', () => {
     await api(admin, 'PATCH', '/api/ai', { vision: false });
   });
 
+  it('remembers what the AI wrote for a photo, so hand edits can be told apart', async () => {
+    const lib = (await api(admin, 'GET', '/api/library')).json();
+    const bookId = lib.books[0].id;
+    const find = async () => (await api(admin, 'GET', `/api/books/${bookId}`)).json().pages.flatMap((pg: { photos: { id: string; caption: string; aiCaption: string }[] }) => pg.photos)[0];
+    const photo = await find();
+    const { caption } = (await api(admin, 'POST', '/api/ai/caption', { subject: 'dock', photoId: photo.id })).json();
+    expect((await find()).aiCaption).toBe(caption);
+    await api(admin, 'PATCH', `/api/photos/${photo.id}`, { caption: 'Typed by hand' });
+    expect(await find()).toMatchObject({ caption: 'Typed by hand', aiCaption: caption });
+  });
+
   it('lets book editors caption their photos but keeps the test box to the admin', async () => {
     expect((await api(member, 'POST', '/api/ai/caption', { subject: 'x' })).statusCode).toBe(403);
   });

@@ -13,6 +13,8 @@ export function photoDto(p: PhotoRow) {
     position: p.position,
     subject: p.subject,
     caption: p.caption,
+    /** The last caption the AI wrote. A caption that differs was typed or changed by hand. */
+    aiCaption: p.aiCaption,
     month: p.month,
     width: p.width,
     height: p.height,

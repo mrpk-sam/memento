@@ -229,47 +229,99 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
       }, 24);
     });
 
-  /** Asks the server to write a caption, then types it into place and saves it. */
-  /** Asks the server to write a caption, then types it into place and saves it. True on success. */
-  const regen = async (photoId: string): Promise<boolean> => {
+  /**
+   * Asks the server to write a caption, then puts it in place and saves it. Types it out unless
+   * `quick`. Returns null on success, else the error (the caller decides whether to show it).
+   */
+  const writeCaption = async (photoId: string, quick = false): Promise<unknown> => {
     const f = findPhoto(photoId);
-    if (!f) return false;
+    if (!f) return new Error('That photo is gone.');
     setBusy([photoId], true);
     const ctx = `${f.pg.label ?? ''} ${f.pg.header?.subtitle ?? ''}`.trim() || (f.pg.type === 'title' ? 'Cover photo of a family year-in-review scrapbook' : '');
     try {
       const { caption } = await api<{ caption: string }>('/ai/caption', { body: { subject: f.p.subject || 'family photo', context: ctx, photoId } });
       setBusy([photoId], false);
-      updatePhoto(photoId, { caption: '' });
-      await typeOut(caption, (t) => updatePhoto(photoId, { caption: t }));
+      // The server noted this as the AI's caption; the screen does too, so it doesn't count as typed.
+      if (quick) updatePhoto(photoId, { caption, aiCaption: caption });
+      else {
+        updatePhoto(photoId, { caption: '', aiCaption: caption });
+        await typeOut(caption, (t) => updatePhoto(photoId, { caption: t }));
+      }
       await save(() => api(`/photos/${photoId}`, { method: 'PATCH', body: { caption } }));
-      return true;
+      return null;
     } catch (e) {
       setBusy([photoId], false);
-      toast(errorMessage(e));
-      return false;
+      return e;
     }
   };
 
-  /** Rewrites every caption in `ids`, one at a time. Stops at the first failure. Undo restores them all. */
+  /** Writes one caption. True on success; a failure is shown as a toast. */
+  const regen = async (photoId: string): Promise<boolean> => {
+    const err = await writeCaption(photoId);
+    if (err) toast(errorMessage(err));
+    return !err;
+  };
+
+  /** Progress of a run of caption rewrites, for the panel. */
+  const [bulk, setBulk] = useState<{ done: number; total: number; waiting: boolean } | null>(null);
+  const bulkStop = useRef(false);
+  const bulkOn = useRef(false);
+  useEffect(
+    () => () => {
+      bulkStop.current = true;
+    },
+    [],
+  );
+
+  /**
+   * Rewrites every caption in `ids`, one at a time, with progress and a Stop. When the AI's rate
+   * limit is hit it waits and tries again; any other failure stops the run. Undo restores them all.
+   */
   const regenAll = async (ids: string[]) => {
     const list = ids.filter((id) => !id.startsWith('tmp-'));
-    if (!list.length) return;
-    const before = list.map((id) => ({ id, caption: findPhoto(id)?.p.caption ?? '' }));
-    setBusy(list, true);
+    if (!list.length || bulkOn.current) return;
+    bulkOn.current = true;
+    bulkStop.current = false;
+    const before = list.map((id) => {
+      const p = findPhoto(id)?.p;
+      return { id, caption: p?.caption ?? '', aiCaption: p?.aiCaption ?? '' };
+    });
+    // Big runs skip the typing effect, which would add a second or two per photo.
+    const quick = list.length > 15;
     let done = 0;
-    for (const [i, id] of list.entries()) {
-      if (await regen(id)) done++;
-      else {
-        setBusy(list.slice(i + 1), false);
-        break;
+    let failed: unknown = null;
+    setBulk({ done: 0, total: list.length, waiting: false });
+    try {
+      for (const id of list) {
+        if (bulkStop.current) break;
+        if (!findPhoto(id)) continue;
+        let err = await writeCaption(id, quick);
+        for (let tries = 0; err instanceof ApiError && err.status === 429 && tries < 6 && !bulkStop.current; tries++) {
+          setBulk((b) => b && { ...b, waiting: true });
+          await new Promise((r) => setTimeout(r, 15_000));
+          setBulk((b) => b && { ...b, waiting: false });
+          if (!bulkStop.current) err = await writeCaption(id, quick);
+        }
+        if (bulkStop.current && err) break;
+        if (err) {
+          failed = err;
+          break;
+        }
+        done++;
+        setBulk((b) => b && { ...b, done });
       }
+    } finally {
+      bulkOn.current = false;
+      setBulk(null);
     }
-    if (!done) return;
-    toast(`${done} caption${done > 1 ? 's' : ''} rewritten`, 'Undo', () =>
+    const n = `${done} caption${done === 1 ? '' : 's'} rewritten`;
+    const head = failed ? `${errorMessage(failed)} ${done ? `${n} before that.` : ''}` : bulkStop.current ? `Stopped. ${n}.` : n;
+    if (!done) return toast(head.trim());
+    toast(head.trim(), 'Undo', () =>
       void save(async () => {
-        for (const b of before) {
-          updatePhoto(b.id, { caption: b.caption });
-          await api(`/photos/${b.id}`, { method: 'PATCH', body: { caption: b.caption } });
+        for (const b of before.filter((x) => findPhoto(x.id))) {
+          updatePhoto(b.id, { caption: b.caption, aiCaption: b.aiCaption });
+          await api(`/photos/${b.id}`, { method: 'PATCH', body: { caption: b.caption, aiCaption: b.aiCaption } });
         }
       }),
     );
@@ -279,6 +331,10 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
     saved,
     loading,
     review,
+    bulk,
+    stopBulk() {
+      bulkStop.current = true;
+    },
     regen,
     regenAll,
     patchPage,
@@ -449,7 +505,7 @@ export function useBookEditor(bookId: string, opts: { autoCaption: boolean; goTo
         const t = temp.find((x) => x.id === p.id);
         if (!t) return p as PhotoDto;
         const u = urls.get(t.id) ?? null;
-        return { id: t.id, pageId: null, position: 0, subject: t.file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' '), caption: '', month: p.month, width: null, height: null, thumbUrl: u, displayUrl: u, videoUrl: null, durationMs: null };
+        return { id: t.id, pageId: null, position: 0, subject: t.file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' '), caption: '', aiCaption: '', month: p.month, width: null, height: null, thumbUrl: u, displayUrl: u, videoUrl: null, durationMs: null };
       };
       setPages(() => probe.pages.map((pg) => ({ ...(pg as PageDto), photos: (pg.photos ?? []).map(toDto) })));
       setBusy(temp.map((t) => t.id), true);

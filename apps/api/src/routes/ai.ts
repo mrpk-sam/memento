@@ -222,7 +222,11 @@ export async function aiRoutes(app: FastifyInstance) {
     if (c.vision && imageKey) image = await storage.get(imageKey).catch(() => null);
     if (!v.subject && !image) throw badRequest('Describe the photo first');
     try {
-      return { caption: await writeCaption(c, v.subject || 'a family photo', where, image, { fetch: aiFetch }) };
+      const caption = await writeCaption(c, v.subject || 'a family photo', where, image, { fetch: aiFetch });
+      // Remember what the AI wrote, so a caption changed later can be told apart (hand-typed).
+      if (v.photoId) await db.update(s.photos).set({ aiCaption: caption }).where(eq(s.photos.id, v.photoId));
+      else if (v.inboxItemId) await db.update(s.inboxItems).set({ aiCaption: caption }).where(eq(s.inboxItems.id, v.inboxItemId));
+      return { caption };
     } catch (e) {
       // Only the admin can set captions up, so others are pointed to them, not to the Desk.
       if (e instanceof HttpError && e.statusCode === 400 && user.access !== 'admin' && !aiReady(c)) {

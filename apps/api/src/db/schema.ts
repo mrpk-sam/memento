@@ -212,6 +212,8 @@ export const photos = pgTable(
     durationMs: integer('duration_ms'),
     subject: text('subject').notNull().default(''),
     caption: text('caption').notNull().default(''),
+    /** The last caption the AI wrote for it. A caption that differs was typed or changed by hand. */
+    aiCaption: text('ai_caption').notNull().default(''),
     month: smallint('month'),
     takenAt: timestamp('taken_at', { withTimezone: true }),
     uploadedBy: uuid('uploaded_by').references(() => users.id, { onDelete: 'set null' }),
@@ -233,6 +235,8 @@ export const inboxItems = pgTable('inbox_items', {
   durationMs: integer('duration_ms'),
   subject: text('subject').notNull().default(''),
   caption: text('caption').notNull().default(''),
+  /** The last caption the AI wrote for it; carried to the photo when it's filed. */
+  aiCaption: text('ai_caption').notNull().default(''),
   destBookId: uuid('dest_book_id').references(() => books.id, { onDelete: 'set null' }),
   destPageId: uuid('dest_page_id').references(() => pages.id, { onDelete: 'set null' }),
   createdAt: createdAt(),

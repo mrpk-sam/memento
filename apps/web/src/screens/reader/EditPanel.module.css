@@ -68,3 +68,9 @@
   .addChip, .pack { height: 40px; }
   .bulkClear { padding: 12px 8px; }
 }
+
+/* Rewriting captions with AI: the confirm step and the progress of a run. */
+.askText { font: 400 14px/1.45 var(--font-ui); }
+.askRow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.bar { height: 6px; border-radius: 999px; background: var(--surface2); overflow: hidden; }
+.bar > span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width .3s ease; }

@@ -203,7 +203,7 @@ export function UploadReview({ content, editor }: Props) {
               )}
               <button
                 className={s.ai}
-                disabled={writing}
+                disabled={writing || !!editor.bulk}
                 onClick={() => void editor.regenAll(ready)}
               >
                 <Sparkle />

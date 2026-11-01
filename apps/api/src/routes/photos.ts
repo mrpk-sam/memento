@@ -238,7 +238,8 @@ export async function photoRoutes(app: FastifyInstance) {
 
   app.patch<{ Params: { id: string } }>('/api/photos/:id', async (req) => {
     const { p } = await photoForEdit(req, req.params.id);
-    const v = parse(z.object({ caption: z.string().max(300), subject: z.string().max(200) }).partial(), req.body);
+    // aiCaption is only sent by Undo, to put back what the AI had written before.
+    const v = parse(z.object({ caption: z.string().max(300), subject: z.string().max(200), aiCaption: z.string().max(300) }).partial(), req.body);
     await db.update(s.photos).set(v).where(eq(s.photos.id, p.id));
     await touch(db, p.bookId);
     return { ok: true };

@@ -56,6 +56,8 @@ export interface PhotoDto {
   position: number;
   subject: string;
   caption: string;
+  /** The last caption the AI wrote. A caption that differs was typed or changed by hand. */
+  aiCaption: string;
   month: number | null;
   width: number | null;
   height: number | null;

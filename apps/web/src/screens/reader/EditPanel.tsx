@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { MONTHS, MONTH_CAPACITY, STICKER_PACKS, capacity, chapterList, chapterSpan, chapterStart, chapters, hasMonthChapter, nextYear, poss, stepTarget, yearSpread } from '@memento/shared';
-import type { BookContent, Theme } from '../../api/types';
+import type { BookContent, PhotoDto, Theme } from '../../api/types';
 import { SizeControls, TexturePicker } from '../../components/CoverControls';
 import { MEDIA_ACCEPT } from '../../lib/upload';
 import { useBookPatch } from '../../lib/useBookPatch';
@@ -108,6 +108,29 @@ export function EditPanel({ content, themes, L, single, goTo, selPhoto, setSelPh
       if (!next.delete(id)) next.add(id);
       return next;
     });
+
+  // Rewriting captions with AI: this spread, its chapter, or the whole book. Captions typed by
+  // hand (they differ from what the AI last wrote) are asked about first.
+  const live = (list: PhotoDto[]) => list.filter((p) => !p.id.startsWith('tmp-'));
+  const bookPhotos = live(pages.flatMap((pg) => pg.photos));
+  const spreadPhotos = live(idxs.flatMap((i) => pages[i]?.photos ?? []));
+  const chIdx = idxs.map((i) => chapterStart(pages, i)).find((x) => x != null) ?? null;
+  const chName = chIdx != null ? chapterOpts.find((c) => c.idx === chIdx)?.name ?? null : null;
+  const chPhotos = chIdx != null ? live(chapterSpan(pages, chIdx).flatMap((i) => pages[i]?.photos ?? [])) : [];
+  const typed = (p: PhotoDto) => p.caption.trim() !== '' && p.caption !== p.aiCaption;
+  const [ask, setAsk] = useState<{ what: string; ids: string[]; typed: string[] } | null>(null);
+  const rewrite = (what: string, list: PhotoDto[]) => {
+    const t = list.filter(typed).map((p) => p.id);
+    // Small runs with nothing typed by hand just go; a big one says how long it takes.
+    if (!t.length && list.length <= 15) return void editor.regenAll(list.map((p) => p.id));
+    setAsk({ what, ids: list.map((p) => p.id), typed: t });
+  };
+  // "These pages" means the spread it was asked on, so turning the page drops the question.
+  useEffect(() => setAsk(null), [L]);
+  const runAsk = (ids: string[]) => {
+    setAsk(null);
+    void editor.regenAll(ids);
+  };
 
   const field = (key: string, label: string, def: string) => ({ key, label, def, value: tx[key] ?? '' });
   const openGroups = [
@@ -339,6 +362,71 @@ export function EditPanel({ content, themes, L, single, goTo, selPhoto, setSelPh
         </div>
       )}
 
+      {bookPhotos.length > 0 && (
+        <div className={s.group}>
+          <label className={s.label}>Rewrite captions with AI</label>
+          {editor.bulk ? (
+            <div className={s.card} role="status">
+              <div className={s.askText}>
+                {editor.bulk.waiting ? 'Waiting a moment for the AI to catch up…' : `Writing ${Math.min(editor.bulk.done + 1, editor.bulk.total)} of ${editor.bulk.total}…`}
+              </div>
+              <div className={s.bar}>
+                <span style={{ width: `${(editor.bulk.done / editor.bulk.total) * 100}%` }} />
+              </div>
+              <div className={s.askRow}>
+                <button className={s.jump} onClick={() => editor.stopBulk()}>
+                  Stop
+                </button>
+                <span className={s.hint}>You can keep editing. Undo at the end puts them all back.</span>
+              </div>
+            </div>
+          ) : ask ? (
+            <div className={s.card}>
+              <div className={s.askText}>
+                Rewrite {ask.ids.length} caption{ask.ids.length === 1 ? '' : 's'} in {ask.what}?{' '}
+                {ask.typed.length > 0 && `${ask.typed.length} ${ask.typed.length === 1 ? 'was' : 'were'} typed by hand. `}
+                {ask.ids.length > 15 && 'This can take a few minutes.'}
+              </div>
+              <div className={s.askRow}>
+                <button className={s.inkBtn} onClick={() => runAsk(ask.ids)}>
+                  Rewrite all {ask.ids.length}
+                </button>
+                {ask.typed.length > 0 && ask.typed.length < ask.ids.length && (
+                  <button className={s.regen} onClick={() => runAsk(ask.ids.filter((id) => !ask.typed.includes(id)))}>
+                    Keep the {ask.typed.length} typed
+                  </button>
+                )}
+                <button className={s.jump} onClick={() => setAsk(null)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className={s.askRow}>
+                {spreadPhotos.length > 0 && (
+                  <button className={s.regen} onClick={() => rewrite('these pages', spreadPhotos)}>
+                    <Sparkle />
+                    These pages ({spreadPhotos.length})
+                  </button>
+                )}
+                {chName && chPhotos.length > 0 && chPhotos.length !== spreadPhotos.length && (
+                  <button className={s.regen} onClick={() => rewrite(chName, chPhotos)}>
+                    <Sparkle />
+                    {chName} ({chPhotos.length})
+                  </button>
+                )}
+                <button className={s.regen} onClick={() => rewrite('this book', bookPhotos)}>
+                  <Sparkle />
+                  Whole book ({bookPhotos.length})
+                </button>
+              </div>
+              <span className={s.hint}>Writes a new caption for every photo. You're asked first about captions typed by hand.</span>
+            </>
+          )}
+        </div>
+      )}
+
       {pgs.some((p) => p.photos.length) && (
         <div className={s.group} style={{ gap: 12 }}>
           <div className={s.slotsHead}>
@@ -360,7 +448,7 @@ export function EditPanel({ content, themes, L, single, goTo, selPhoto, setSelPh
               const ids = idxs.flatMap((i) => (pages[i]?.photos ?? []).map((p) => p.id)).filter((id) => !id.startsWith('tmp-'));
               const busyNow = ids.some((id) => editor.loading.has(id));
               return (
-                <button className={s.regen} disabled={busyNow || !ids.length} title="Write new captions for every photo on this spread" onClick={() => void editor.regenAll(ids)}>
+                <button className={s.regen} disabled={busyNow || !ids.length || !!editor.bulk} title="Write new captions for every photo on this spread" onClick={() => rewrite('these pages', spreadPhotos)}>
                   <Sparkle />
                   {busyNow ? 'Writing…' : 'Regenerate all'}
                 </button>

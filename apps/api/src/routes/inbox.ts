@@ -150,6 +150,7 @@ export async function inboxRoutes(app: FastifyInstance) {
           durationMs: it.durationMs,
           subject: it.subject,
           caption: it.caption,
+          aiCaption: it.aiCaption,
           uploadedBy: it.uploadedBy,
         });
         await persistLayout(tx as never, book.id, r.pages);
