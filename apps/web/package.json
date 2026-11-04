@@ -12,10 +12,10 @@
   "dependencies": {
     "@memento/shared": "workspace:*",
     "@phosphor-icons/web": "^2.1.2",
-    "@tanstack/react-query": "^5.104.5",
+    "@tanstack/react-query": "^5.105.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^7.18.4",
+    "react-router-dom": "^7.18.5",
     "workbox-window": "^7.4.1",
     "zod": "^4.6.7"
   },
